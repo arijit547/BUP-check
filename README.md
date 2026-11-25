@@ -1,10 +1,14 @@
 # BUP Fuel Operations
 
+Repository: `https://github.com/arijit547/BUP-check`
+
 ## Milestone 1
 
-Run Docker with the Linux engine, then start the official simulator and the FastAPI snapshot service.
+Clone the repository, run Docker with the Linux engine, then start the official simulator and the FastAPI snapshot service.
 
 ```powershell
+git clone https://github.com/arijit547/BUP-check.git
+cd BUP-check
 docker compose up --build --wait
 Invoke-RestMethod http://localhost:8001/api/snapshot
 ```
@@ -68,7 +72,7 @@ Each verification command starts a new Compose project with random loopback port
 CI runs on branch pushes and pull requests. Pushing a `v*` tag triggers the same checks, then publishes both images to GHCR and smoke-tests them in a fresh Compose project. Use your lowercase GitHub owner and repository in the image prefix. Authenticate with GHCR before pulling private packages.
 
 ```powershell
-$env:BUP_IMAGE_PREFIX = 'ghcr.io/owner/repository'
+$env:BUP_IMAGE_PREFIX = 'ghcr.io/arijit547/bup-check'
 $env:BUP_RELEASE_TAG = 'v1.0.0'
 docker compose -f compose.yaml -f compose.release.yaml up --no-build --pull always --wait
 ```
