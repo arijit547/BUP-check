@@ -1,0 +1,120 @@
+{
+  "collected_at": "2026-11-25T18:02:43.011Z",
+  "endpoint": "/api/planning?history_ticks=8&horizon_ticks=96",
+  "simulator_tick": 42,
+  "simulator_seed": 12345,
+  "concurrency": 8,
+  "warmup_requests": 3,
+  "target_duration_seconds": 15,
+  "elapsed_seconds": 15.005,
+  "requests": 4266,
+  "successful_requests": 4266,
+  "throughput_requests_per_second": 284.315,
+  "successful_requests_per_second": 284.315,
+  "success_latency_ms": {
+    "p50": 25.195,
+    "p95": 39.193,
+    "p99": 155.468
+  },
+  "all_latency_ms": {
+    "p50": 25.195,
+    "p95": 39.193,
+    "p99": 155.468
+  },
+  "errors": 0,
+  "error_rate_percent": 0,
+  "errors_by_type": {},
+  "resource_samples": [
+    {
+      "elapsedSeconds": 2.155,
+      "services": {
+        "simulator-api": {
+          "cpu": "35.42%",
+          "memory": "61.15MiB / 7.366GiB"
+        },
+        "snapshot-api": {
+          "cpu": "124.98%",
+          "memory": "58.81MiB / 7.366GiB"
+        },
+        "operator-dashboard": {
+          "cpu": "23.68%",
+          "memory": "12.83MiB / 7.366GiB"
+        }
+      }
+    },
+    {
+      "elapsedSeconds": 5.827,
+      "services": {
+        "simulator-api": {
+          "cpu": "46.81%",
+          "memory": "60.52MiB / 7.366GiB"
+        },
+        "snapshot-api": {
+          "cpu": "94.43%",
+          "memory": "46.78MiB / 7.366GiB"
+        },
+        "operator-dashboard": {
+          "cpu": "21.85%",
+          "memory": "13.14MiB / 7.366GiB"
+        }
+      }
+    },
+    {
+      "elapsedSeconds": 9.479,
+      "services": {
+        "simulator-api": {
+          "cpu": "38.55%",
+          "memory": "60.97MiB / 7.366GiB"
+        },
+        "snapshot-api": {
+          "cpu": "136.46%",
+          "memory": "46.57MiB / 7.366GiB"
+        },
+        "operator-dashboard": {
+          "cpu": "27.79%",
+          "memory": "13.96MiB / 7.366GiB"
+        }
+      }
+    },
+    {
+      "elapsedSeconds": 13.13,
+      "services": {
+        "simulator-api": {
+          "cpu": "34.78%",
+          "memory": "61.21MiB / 7.366GiB"
+        },
+        "snapshot-api": {
+          "cpu": "146.15%",
+          "memory": "47.24MiB / 7.366GiB"
+        },
+        "operator-dashboard": {
+          "cpu": "26.92%",
+          "memory": "13.72MiB / 7.366GiB"
+        }
+      }
+    },
+    {
+      "elapsedSeconds": 16.797,
+      "services": {
+        "simulator-api": {
+          "cpu": "16.93%",
+          "memory": "59.71MiB / 7.366GiB"
+        },
+        "snapshot-api": {
+          "cpu": "0.17%",
+          "memory": "46.1MiB / 7.366GiB"
+        },
+        "operator-dashboard": {
+          "cpu": "0.00%",
+          "memory": "12.46MiB / 7.366GiB"
+        }
+      }
+    }
+  ],
+  "postflight": {
+    "tick": 42,
+    "status": "PAUSED",
+    "allocations": 0,
+    "probe_errors": []
+  }
+}

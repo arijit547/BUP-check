@@ -1,0 +1,192 @@
+{
+  "policy": "reorder-policy",
+  "seed": 12345,
+  "start_tick": 42,
+  "end_tick": 150,
+  "decision_every_ticks": 6,
+  "events": [
+    {
+      "type": "demand_spike",
+      "start_tick": 42,
+      "duration_ticks": 16,
+      "parameters": {
+        "station_ids": [
+          "station-mirpur"
+        ],
+        "multiplier": 1.8
+      }
+    },
+    {
+      "type": "route_disruption",
+      "start_tick": 42,
+      "duration_ticks": 12,
+      "parameters": {
+        "route_ids": [
+          "route-gazipur-mirpur"
+        ]
+      }
+    }
+  ],
+  "decisions": [
+    {
+      "tick": 43,
+      "source_depot_id": "depot-patiya",
+      "destination_station_id": "station-karnaphuli",
+      "route_id": "route-patiya-karnaphuli",
+      "fuel_type": "OCTANE",
+      "quantity": 3126.172,
+      "allocation_id": 1
+    },
+    {
+      "tick": 49,
+      "source_depot_id": "depot-gazipur",
+      "destination_station_id": "station-tongi",
+      "route_id": "route-gazipur-tongi",
+      "fuel_type": "DIESEL",
+      "quantity": 6500,
+      "allocation_id": 2
+    },
+    {
+      "tick": 55,
+      "source_depot_id": "depot-patiya",
+      "destination_station_id": "station-karnaphuli",
+      "route_id": "route-patiya-karnaphuli",
+      "fuel_type": "DIESEL",
+      "quantity": 5904.594,
+      "allocation_id": 3
+    },
+    {
+      "tick": 61,
+      "source_depot_id": "depot-gazipur",
+      "destination_station_id": "station-mirpur",
+      "route_id": "route-gazipur-mirpur",
+      "fuel_type": "OCTANE",
+      "quantity": 3954.745,
+      "allocation_id": 4
+    },
+    {
+      "tick": 67,
+      "source_depot_id": "depot-gazipur",
+      "destination_station_id": "station-mirpur",
+      "route_id": "route-gazipur-mirpur",
+      "fuel_type": "PETROL",
+      "quantity": 6816.991,
+      "allocation_id": 5
+    },
+    {
+      "tick": 73,
+      "source_depot_id": "depot-patiya",
+      "destination_station_id": "station-karnaphuli",
+      "route_id": "route-patiya-karnaphuli",
+      "fuel_type": "PETROL",
+      "quantity": 7000,
+      "allocation_id": 6
+    },
+    {
+      "tick": 79,
+      "source_depot_id": "depot-patiya",
+      "destination_station_id": "station-coxsbazar",
+      "route_id": "route-patiya-coxsbazar",
+      "fuel_type": "PETROL",
+      "quantity": 6000,
+      "allocation_id": 7
+    },
+    {
+      "tick": 85,
+      "source_depot_id": "depot-patiya",
+      "destination_station_id": "station-coxsbazar",
+      "route_id": "route-patiya-coxsbazar",
+      "fuel_type": "DIESEL",
+      "quantity": 6000,
+      "allocation_id": 8
+    },
+    {
+      "tick": 91,
+      "source_depot_id": "depot-gazipur",
+      "destination_station_id": "station-mirpur",
+      "route_id": "route-gazipur-mirpur",
+      "fuel_type": "DIESEL",
+      "quantity": 7000,
+      "allocation_id": 9
+    },
+    {
+      "tick": 97,
+      "source_depot_id": "depot-patiya",
+      "destination_station_id": "station-coxsbazar",
+      "route_id": "route-patiya-coxsbazar",
+      "fuel_type": "OCTANE",
+      "quantity": 3904.134,
+      "allocation_id": 10
+    },
+    {
+      "tick": 103,
+      "source_depot_id": "depot-gazipur",
+      "destination_station_id": "station-tongi",
+      "route_id": "route-gazipur-tongi",
+      "fuel_type": "PETROL",
+      "quantity": 4051.606,
+      "allocation_id": 11
+    },
+    {
+      "tick": 109,
+      "source_depot_id": "depot-patiya",
+      "destination_station_id": "station-karnaphuli",
+      "route_id": "route-patiya-karnaphuli",
+      "fuel_type": "OCTANE",
+      "quantity": 4266.662,
+      "allocation_id": 12
+    },
+    {
+      "tick": 115,
+      "source_depot_id": "depot-patiya",
+      "destination_station_id": "station-karnaphuli",
+      "route_id": "route-patiya-karnaphuli",
+      "fuel_type": "DIESEL",
+      "quantity": 6812.497,
+      "allocation_id": 13
+    },
+    {
+      "tick": 121,
+      "source_depot_id": "depot-gazipur",
+      "destination_station_id": "station-tongi",
+      "route_id": "route-gazipur-tongi",
+      "fuel_type": "DIESEL",
+      "quantity": 6500,
+      "allocation_id": 14
+    },
+    {
+      "tick": 127,
+      "source_depot_id": "depot-patiya",
+      "destination_station_id": "station-karnaphuli",
+      "route_id": "route-patiya-karnaphuli",
+      "fuel_type": "PETROL",
+      "quantity": 7000,
+      "allocation_id": 15
+    },
+    {
+      "tick": 133,
+      "source_depot_id": "depot-gazipur",
+      "destination_station_id": "station-mirpur",
+      "route_id": "route-gazipur-mirpur",
+      "fuel_type": "PETROL",
+      "quantity": 7000,
+      "allocation_id": 16
+    },
+    {
+      "tick": 139,
+      "source_depot_id": "depot-gazipur",
+      "destination_station_id": "station-tongi",
+      "route_id": "route-gazipur-tongi",
+      "fuel_type": "OCTANE",
+      "quantity": 3235.485,
+      "allocation_id": 17
+    }
+  ],
+  "metrics": {
+    "served_demand_liters": 146069.345,
+    "unmet_demand_liters": 0,
+    "service_level": 1,
+    "allocation_liters": 95072.886,
+    "allocation_failures": 0
+  }
+}

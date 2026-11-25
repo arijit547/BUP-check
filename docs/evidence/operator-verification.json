@@ -1,0 +1,89 @@
+{
+  "startup": {
+    "project": "bup-m5-e2e-7d2c1bdb",
+    "mode": "e2e",
+    "simulator": {
+      "status": "ok",
+      "database": "ok",
+      "simulation": {
+        "status": "PAUSED",
+        "tick": 0
+      }
+    },
+    "snapshot": {
+      "tick": 0,
+      "depots": 2,
+      "stations": 4,
+      "routes": 6
+    },
+    "contract_matches": true,
+    "backend_compiles": true,
+    "backend_tests_passed": true,
+    "approval_ledger_empty": true
+  },
+  "playwright": {
+    "test": "operator reviews a crisis recommendation, approves, tracks delivery and recovers",
+    "status": "passed",
+    "suite_duration_seconds": 47.236,
+    "steps": [
+      "Seed real demand and disrupt a recommended route",
+      "Verify the live inventory and approve the displayed proposal",
+      "Track the official allocation through arrival",
+      "Retain the last validated view during stale data and recover"
+    ],
+    "planning-after-disruption": {
+      "tick": 43,
+      "closedRoute": "route-gazipur-tongi",
+      "first": {
+        "route_id": "route-patiya-karnaphuli",
+        "source_depot_id": "depot-patiya",
+        "source_depot_name": "Patiya Depot",
+        "destination_station_id": "station-karnaphuli",
+        "destination_station_name": "Karnaphuli Highway Station",
+        "fuel_type": "DIESEL",
+        "quantity_liters": 7000,
+        "arrival_tick": 45,
+        "eta_ticks": 2,
+        "eta_minutes": 30,
+        "unmet_before_liters": 7562.508,
+        "unmet_after_liters": 562.508,
+        "unmet_avoided_liters": 7000,
+        "policy_mode": "FORECAST_OPTIMIZER",
+        "priority_score": 1538.996,
+        "stockout_tick_before": 74,
+        "stockout_tick_after": 134,
+        "risk_before": "HIGH",
+        "risk_after": "MEDIUM",
+        "confidence": "MEDIUM",
+        "rationale": "Avoids 7,000.0 L unmet demand (HIGH → MEDIUM risk); arrives at tick 45 (30 min).",
+        "signals": [
+          "8-tick rolling mean 135.0 L/tick (projected 116.0 L/tick)",
+          "Stockout projected at tick 74"
+        ],
+        "constraints": [
+          "Route max 7,000 L",
+          "Depot dispatch remaining 11,000 L",
+          "Station room at arrival 10,609 L"
+        ],
+        "alternative_routes": [
+          "route-gazipur-karnaphuli"
+        ]
+      }
+    },
+    "arrived-allocation": {
+      "id": 1,
+      "idempotency_key": "bup-f3280be2-3a88-4691-9915-c577a98a7466",
+      "source_depot_id": "depot-patiya",
+      "destination_station_id": "station-karnaphuli",
+      "route_id": "route-patiya-karnaphuli",
+      "fuel_type": "DIESEL",
+      "quantity": 7000,
+      "created_tick": 43,
+      "departure_tick": 43,
+      "expected_arrival_tick": 45,
+      "actual_arrival_tick": 45,
+      "status": "ARRIVED",
+      "failure_reason": null
+    }
+  }
+}

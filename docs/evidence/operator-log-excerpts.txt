@@ -1,0 +1,16 @@
+simulator-api-1  | INFO:     127.0.0.1:36890 - "GET /v1/health HTTP/1.1" 200 OK
+snapshot-api-1   | INFO:     172.22.0.4:45440 - "GET /api/metrics HTTP/1.1" 200 OK
+snapshot-api-1   | INFO:     172.22.0.4:45428 - "GET /api/health HTTP/1.1" 200 OK
+snapshot-api-1   | INFO:     172.22.0.4:45452 - "PUT /api/approvals/f3280be2-3a88-4691-9915-c577a98a7466 HTTP/1.1" 200 OK
+snapshot-api-1   | INFO:     172.22.0.4:45476 - "GET /api/planning HTTP/1.1" 200 OK
+simulator-api-1  | INFO:     172.22.0.1:35862 - "POST /admin/faults HTTP/1.1" 201 Created
+snapshot-api-1   | INFO:     172.22.0.4:59942 - "GET /api/approvals HTTP/1.1" 200 OK
+snapshot-api-1   | INFO:     172.22.0.4:59946 - "GET /api/snapshot HTTP/1.1" 503 Service Unavailable
+snapshot-api-1   | INFO:     172.22.0.4:59952 - "GET /api/metrics HTTP/1.1" 200 OK
+snapshot-api-1   | INFO:     172.22.0.4:59948 - "GET /api/health HTTP/1.1" 503 Service Unavailable
+snapshot-api-1   | INFO:     172.22.0.4:59964 - "GET /api/planning HTTP/1.1" 503 Service Unavailable
+simulator-api-1  | INFO:     172.22.0.1:36336 - "POST /admin/faults/clear HTTP/1.1" 200 OK
+snapshot-api-1   | INFO:     172.22.0.4:34522 - "GET /api/metrics HTTP/1.1" 200 OK
+snapshot-api-1   | INFO:     172.22.0.4:34518 - "GET /api/snapshot HTTP/1.1" 200 OK
+snapshot-api-1   | INFO:     172.22.0.4:34532 - "GET /api/health HTTP/1.1" 200 OK
+snapshot-api-1   | INFO:     172.22.0.4:34544 - "GET /api/planning HTTP/1.1" 200 OK

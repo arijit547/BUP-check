@@ -1,0 +1,1731 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "BUP Fuel Operations Snapshot API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/snapshot": {
+      "get": {
+        "summary": "Get Snapshot",
+        "description": "Reads the official simulator's current tick, inventory in liters, and routes. Retries a read if the simulator changes during collection.",
+        "operationId": "getSnapshot",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Simulator response failed schema validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Simulator is unavailable, reports stale data, or changed during every read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/planning": {
+      "get": {
+        "summary": "Get Planning Report",
+        "description": "Projects station demand from recent history with seasonality/event awareness, detects anomalies and bottlenecks, activates safety reorder fallback when history is incomplete, and ranks standalone shipment alternatives by urgency-weighted unmet demand avoided.",
+        "operationId": "getPlanningReport",
+        "parameters": [
+          {
+            "name": "history_ticks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 96,
+              "minimum": 1,
+              "description": "Completed ticks used for the rolling mean.",
+              "default": 8,
+              "title": "History Ticks"
+            },
+            "description": "Completed ticks used for the rolling mean."
+          },
+          {
+            "name": "horizon_ticks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 288,
+              "minimum": 1,
+              "description": "Number of ticks to project from the current tick.",
+              "default": 96,
+              "title": "Horizon Ticks"
+            },
+            "description": "Number of ticks to project from the current tick."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Simulator response failed schema validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Simulator is unavailable, reports stale data, or changed during every read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approvals/{intent_id}": {
+      "put": {
+        "summary": "Approve",
+        "description": "Approve or retry an exact shipment intent. The response reports its persisted outcome.",
+        "operationId": "submitApproval",
+        "parameters": [
+          {
+            "name": "intent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intent Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Proposal"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalAttempt"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The intent ID already belongs to a different shipment payload."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approvals": {
+      "get": {
+        "summary": "Approvals",
+        "description": "Lists durable approval attempts and reconciles simulator shipment statuses when fresh.",
+        "operationId": "listApprovals",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalLedger"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Get Health",
+        "description": "Reports component health for the backend API, SQLite ledger, simulator, SSE stream, and intelligence modules.",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReport"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "One or more critical components are degraded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "summary": "Get Metrics",
+        "description": "Returns application request latency percentiles, error rate, intelligence fallback/anomaly counts, SSE counters, and upstream simulator metrics.",
+        "operationId": "getMetrics",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Anomaly": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "DEMAND_SPIKE",
+              "DEMAND_DROP",
+              "STOCKOUT_RISK",
+              "ROUTE_DISRUPTED",
+              "STATION_OUTAGE",
+              "DEPOT_CONSTRAINED",
+              "DISPATCH_BOTTLENECK",
+              "SUPPLY_DELAYED"
+            ],
+            "title": "Category"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "CRITICAL",
+              "WARNING"
+            ],
+            "title": "Severity"
+          },
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "station",
+              "depot",
+              "route",
+              "supply"
+            ],
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Entity Id"
+          },
+          "fuel_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "DIESEL",
+                  "PETROL",
+                  "OCTANE"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fuel Type"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "observed_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Value"
+          },
+          "baseline_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Value"
+          },
+          "z_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Z Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "severity",
+          "entity_type",
+          "entity_id",
+          "summary"
+        ],
+        "title": "Anomaly"
+      },
+      "ApprovalAttempt": {
+        "properties": {
+          "intent_id": {
+            "type": "string",
+            "title": "Intent Id"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/ShipmentPayload"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "READY",
+              "UNKNOWN",
+              "CONFIRMED",
+              "REJECTED"
+            ],
+            "title": "State"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "shipment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Shipment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "intent_id",
+          "proposal",
+          "state",
+          "message",
+          "shipment"
+        ],
+        "title": "ApprovalAttempt"
+      },
+      "ApprovalLedger": {
+        "properties": {
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalAttempt"
+            },
+            "type": "array",
+            "title": "Attempts"
+          },
+          "simulator_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulator Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attempts",
+          "simulator_error"
+        ],
+        "title": "ApprovalLedger"
+      },
+      "ComponentHealth": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ComponentHealth"
+      },
+      "Depot": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "region_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Region Id"
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/FuelVolumes"
+          },
+          "capacity": {
+            "$ref": "#/components/schemas/FuelVolumes"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "CONSTRAINED"
+            ],
+            "title": "Status"
+          },
+          "dispatch_capacity_per_tick": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Dispatch Capacity Per Tick"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "region_id",
+          "inventory",
+          "capacity",
+          "status",
+          "dispatch_capacity_per_tick"
+        ],
+        "title": "Depot"
+      },
+      "Forecast": {
+        "properties": {
+          "station_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Station Id"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "fuel_type": {
+            "type": "string",
+            "enum": [
+              "DIESEL",
+              "PETROL",
+              "OCTANE"
+            ],
+            "title": "Fuel Type"
+          },
+          "observations": {
+            "type": "integer",
+            "title": "Observations"
+          },
+          "first_history_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First History Tick"
+          },
+          "last_history_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last History Tick"
+          },
+          "demand_liters_per_tick": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demand Liters Per Tick"
+          },
+          "stockout_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stockout Tick"
+          },
+          "unmet_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmet Liters"
+          },
+          "projected_demand_liters_per_tick": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Demand Liters Per Tick"
+          },
+          "fallback_demand_liters_per_tick": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Demand Liters Per Tick"
+          },
+          "demand_std_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demand Std Liters"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW"
+            ],
+            "title": "Confidence",
+            "default": "LOW"
+          },
+          "confidence_score": {
+            "type": "number",
+            "title": "Confidence Score",
+            "default": 0
+          },
+          "shortage_risk": {
+            "type": "string",
+            "enum": [
+              "CRITICAL",
+              "HIGH",
+              "MEDIUM",
+              "LOW",
+              "UNKNOWN"
+            ],
+            "title": "Shortage Risk",
+            "default": "UNKNOWN"
+          },
+          "stockout_probability": {
+            "type": "number",
+            "title": "Stockout Probability",
+            "default": 0
+          },
+          "fallback_used": {
+            "type": "boolean",
+            "title": "Fallback Used",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_id",
+          "station_name",
+          "fuel_type",
+          "observations",
+          "first_history_tick",
+          "last_history_tick",
+          "demand_liters_per_tick",
+          "stockout_tick",
+          "unmet_liters"
+        ],
+        "title": "Forecast"
+      },
+      "FuelVolumes": {
+        "properties": {
+          "DIESEL": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Diesel"
+          },
+          "PETROL": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Petrol"
+          },
+          "OCTANE": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Octane"
+          }
+        },
+        "type": "object",
+        "required": [
+          "DIESEL",
+          "PETROL",
+          "OCTANE"
+        ],
+        "title": "FuelVolumes"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthReport": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "title": "Status"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "components": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ComponentHealth"
+            },
+            "type": "object",
+            "title": "Components"
+          },
+          "p95_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Latency Ms"
+          },
+          "error_rate_percent": {
+            "type": "number",
+            "title": "Error Rate Percent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "timestamp",
+          "version",
+          "components",
+          "p95_latency_ms",
+          "error_rate_percent"
+        ],
+        "title": "HealthReport"
+      },
+      "MetricsReport": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "total_requests": {
+            "type": "integer",
+            "title": "Total Requests"
+          },
+          "error_count": {
+            "type": "integer",
+            "title": "Error Count"
+          },
+          "error_rate_percent": {
+            "type": "number",
+            "title": "Error Rate Percent"
+          },
+          "requests_per_minute": {
+            "type": "number",
+            "title": "Requests Per Minute"
+          },
+          "p50_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50 Latency Ms"
+          },
+          "p95_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Latency Ms"
+          },
+          "p99_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P99 Latency Ms"
+          },
+          "fallback_activations": {
+            "type": "integer",
+            "title": "Fallback Activations"
+          },
+          "active_anomalies": {
+            "type": "integer",
+            "title": "Active Anomalies"
+          },
+          "sse_status": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "connecting",
+              "degraded",
+              "disconnected"
+            ],
+            "title": "Sse Status"
+          },
+          "sse_events_received": {
+            "type": "integer",
+            "title": "Sse Events Received"
+          },
+          "sse_reconnects": {
+            "type": "integer",
+            "title": "Sse Reconnects"
+          },
+          "simulator": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulator"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "total_requests",
+          "error_count",
+          "error_rate_percent",
+          "requests_per_minute",
+          "p50_latency_ms",
+          "p95_latency_ms",
+          "p99_latency_ms",
+          "fallback_activations",
+          "active_anomalies",
+          "sse_status",
+          "sse_events_received",
+          "sse_reconnects"
+        ],
+        "title": "MetricsReport"
+      },
+      "PlanningReport": {
+        "properties": {
+          "tick": {
+            "type": "integer",
+            "title": "Tick"
+          },
+          "history_ticks": {
+            "type": "integer",
+            "title": "History Ticks"
+          },
+          "horizon_ticks": {
+            "type": "integer",
+            "title": "Horizon Ticks"
+          },
+          "forecasts": {
+            "items": {
+              "$ref": "#/components/schemas/Forecast"
+            },
+            "type": "array",
+            "title": "Forecasts"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/Recommendation"
+            },
+            "type": "array",
+            "title": "Recommendations"
+          },
+          "policy_mode": {
+            "type": "string",
+            "enum": [
+              "FORECAST_OPTIMIZER",
+              "REORDER_FALLBACK"
+            ],
+            "title": "Policy Mode",
+            "default": "FORECAST_OPTIMIZER"
+          },
+          "fallback_active": {
+            "type": "boolean",
+            "title": "Fallback Active",
+            "default": false
+          },
+          "anomalies": {
+            "items": {
+              "$ref": "#/components/schemas/Anomaly"
+            },
+            "type": "array",
+            "title": "Anomalies"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/SimulatorEvent"
+            },
+            "type": "array",
+            "title": "Events"
+          },
+          "supply_arrivals": {
+            "items": {
+              "$ref": "#/components/schemas/SupplyArrival"
+            },
+            "type": "array",
+            "title": "Supply Arrivals"
+          },
+          "simulator_metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimulatorMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "tick",
+          "history_ticks",
+          "horizon_ticks",
+          "forecasts",
+          "recommendations"
+        ],
+        "title": "PlanningReport"
+      },
+      "Proposal": {
+        "properties": {
+          "source_depot_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Depot Id"
+          },
+          "destination_station_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Destination Station Id"
+          },
+          "route_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Route Id"
+          },
+          "fuel_type": {
+            "type": "string",
+            "enum": [
+              "DIESEL",
+              "PETROL",
+              "OCTANE"
+            ],
+            "title": "Fuel Type"
+          },
+          "quantity": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Quantity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_depot_id",
+          "destination_station_id",
+          "route_id",
+          "fuel_type",
+          "quantity"
+        ],
+        "title": "Proposal"
+      },
+      "Recommendation": {
+        "properties": {
+          "route_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Route Id"
+          },
+          "source_depot_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Depot Id"
+          },
+          "source_depot_name": {
+            "type": "string",
+            "title": "Source Depot Name"
+          },
+          "destination_station_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Destination Station Id"
+          },
+          "destination_station_name": {
+            "type": "string",
+            "title": "Destination Station Name"
+          },
+          "fuel_type": {
+            "type": "string",
+            "enum": [
+              "DIESEL",
+              "PETROL",
+              "OCTANE"
+            ],
+            "title": "Fuel Type"
+          },
+          "quantity_liters": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Quantity Liters"
+          },
+          "arrival_tick": {
+            "type": "integer",
+            "title": "Arrival Tick"
+          },
+          "eta_ticks": {
+            "type": "integer",
+            "title": "Eta Ticks"
+          },
+          "eta_minutes": {
+            "type": "integer",
+            "title": "Eta Minutes"
+          },
+          "unmet_before_liters": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Unmet Before Liters"
+          },
+          "unmet_after_liters": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Unmet After Liters"
+          },
+          "unmet_avoided_liters": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Unmet Avoided Liters"
+          },
+          "policy_mode": {
+            "type": "string",
+            "enum": [
+              "FORECAST_OPTIMIZER",
+              "REORDER_FALLBACK"
+            ],
+            "title": "Policy Mode",
+            "default": "FORECAST_OPTIMIZER"
+          },
+          "priority_score": {
+            "type": "number",
+            "title": "Priority Score",
+            "default": 0
+          },
+          "stockout_tick_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stockout Tick Before"
+          },
+          "stockout_tick_after": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stockout Tick After"
+          },
+          "risk_before": {
+            "type": "string",
+            "enum": [
+              "CRITICAL",
+              "HIGH",
+              "MEDIUM",
+              "LOW"
+            ],
+            "title": "Risk Before",
+            "default": "MEDIUM"
+          },
+          "risk_after": {
+            "type": "string",
+            "enum": [
+              "CRITICAL",
+              "HIGH",
+              "MEDIUM",
+              "LOW"
+            ],
+            "title": "Risk After",
+            "default": "LOW"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "HIGH",
+              "MEDIUM",
+              "LOW"
+            ],
+            "title": "Confidence",
+            "default": "MEDIUM"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale",
+            "default": ""
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Signals"
+          },
+          "constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Constraints"
+          },
+          "alternative_routes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Alternative Routes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "route_id",
+          "source_depot_id",
+          "source_depot_name",
+          "destination_station_id",
+          "destination_station_name",
+          "fuel_type",
+          "quantity_liters",
+          "arrival_tick",
+          "eta_ticks",
+          "eta_minutes",
+          "unmet_before_liters",
+          "unmet_after_liters",
+          "unmet_avoided_liters"
+        ],
+        "title": "Recommendation"
+      },
+      "Route": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "source_depot_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Depot Id"
+          },
+          "destination_station_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Destination Station Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "DISRUPTED"
+            ],
+            "title": "Status"
+          },
+          "transit_ticks": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "title": "Transit Ticks"
+          },
+          "max_shipment": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Max Shipment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_depot_id",
+          "destination_station_id",
+          "status",
+          "transit_ticks",
+          "max_shipment"
+        ],
+        "title": "Route"
+      },
+      "Shipment": {
+        "properties": {
+          "source_depot_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Depot Id"
+          },
+          "destination_station_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Destination Station Id"
+          },
+          "route_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Route Id"
+          },
+          "fuel_type": {
+            "type": "string",
+            "enum": [
+              "DIESEL",
+              "PETROL",
+              "OCTANE"
+            ],
+            "title": "Fuel Type"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Quantity"
+          },
+          "created_tick": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Created Tick"
+          },
+          "expected_arrival_tick": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Arrival Tick"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "IN_TRANSIT",
+              "ARRIVED",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "title": "Status"
+          },
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_depot_id",
+          "destination_station_id",
+          "route_id",
+          "fuel_type",
+          "quantity",
+          "created_tick",
+          "status",
+          "id",
+          "idempotency_key",
+          "failure_reason"
+        ],
+        "title": "Shipment"
+      },
+      "ShipmentPayload": {
+        "properties": {
+          "source_depot_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Depot Id"
+          },
+          "destination_station_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Destination Station Id"
+          },
+          "route_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Route Id"
+          },
+          "fuel_type": {
+            "type": "string",
+            "enum": [
+              "DIESEL",
+              "PETROL",
+              "OCTANE"
+            ],
+            "title": "Fuel Type"
+          },
+          "quantity": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "title": "Quantity"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_depot_id",
+          "destination_station_id",
+          "route_id",
+          "fuel_type",
+          "quantity",
+          "idempotency_key"
+        ],
+        "title": "ShipmentPayload"
+      },
+      "Simulation": {
+        "properties": {
+          "tick": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Tick"
+          },
+          "tick_minutes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "title": "Tick Minutes"
+          },
+          "sim_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Sim Time",
+            "description": "Simulator time normalized to UTC."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PAUSED",
+              "RUNNING"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tick",
+          "tick_minutes",
+          "sim_time",
+          "status"
+        ],
+        "title": "Simulation"
+      },
+      "SimulatorEvent": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "start_tick": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Start Tick"
+          },
+          "end_tick": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "End Tick"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SCHEDULED",
+              "ACTIVE",
+              "RESOLVED"
+            ],
+            "title": "Status"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "start_tick",
+          "end_tick",
+          "status"
+        ],
+        "title": "SimulatorEvent"
+      },
+      "SimulatorMetrics": {
+        "properties": {
+          "served_demand_liters": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Served Demand Liters"
+          },
+          "unmet_demand_liters": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Unmet Demand Liters"
+          },
+          "service_level": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Service Level"
+          },
+          "allocation_liters": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Allocation Liters"
+          },
+          "allocation_failures": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Allocation Failures"
+          }
+        },
+        "type": "object",
+        "required": [
+          "served_demand_liters",
+          "unmet_demand_liters",
+          "service_level",
+          "allocation_liters",
+          "allocation_failures"
+        ],
+        "title": "SimulatorMetrics"
+      },
+      "Snapshot": {
+        "properties": {
+          "simulation": {
+            "$ref": "#/components/schemas/Simulation"
+          },
+          "depots": {
+            "items": {
+              "$ref": "#/components/schemas/Depot"
+            },
+            "type": "array",
+            "title": "Depots"
+          },
+          "stations": {
+            "items": {
+              "$ref": "#/components/schemas/Station"
+            },
+            "type": "array",
+            "title": "Stations"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/Route"
+            },
+            "type": "array",
+            "title": "Routes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "simulation",
+          "depots",
+          "stations",
+          "routes"
+        ],
+        "title": "Snapshot"
+      },
+      "SnapshotError": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "enum": [
+              "Simulator request failed",
+              "Simulator returned invalid data",
+              "Simulator marked data stale",
+              "Simulation changed while collecting snapshot"
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "SnapshotError"
+      },
+      "Station": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "region_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Region Id"
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/FuelVolumes"
+          },
+          "capacity": {
+            "$ref": "#/components/schemas/FuelVolumes"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "OUTAGE"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "region_id",
+          "inventory",
+          "capacity",
+          "status"
+        ],
+        "title": "Station"
+      },
+      "SupplyArrival": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "depot_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Depot Id"
+          },
+          "fuel_type": {
+            "type": "string",
+            "enum": [
+              "DIESEL",
+              "PETROL",
+              "OCTANE"
+            ],
+            "title": "Fuel Type"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0,
+            "title": "Quantity"
+          },
+          "planned_tick": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Planned Tick"
+          },
+          "actual_tick": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Tick"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SCHEDULED",
+              "DELAYED",
+              "ARRIVED"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "depot_id",
+          "fuel_type",
+          "quantity",
+          "planned_tick",
+          "status"
+        ],
+        "title": "SupplyArrival"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

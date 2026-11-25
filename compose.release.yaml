@@ -1,0 +1,7 @@
+services:
+  snapshot-api:
+    build: !reset null
+    image: "${BUP_IMAGE_PREFIX:?Set BUP_IMAGE_PREFIX}-backend:${BUP_RELEASE_TAG:?Set BUP_RELEASE_TAG}"
+  operator-dashboard:
+    build: !reset null
+    image: "${BUP_IMAGE_PREFIX:?Set BUP_IMAGE_PREFIX}-dashboard:${BUP_RELEASE_TAG:?Set BUP_RELEASE_TAG}"

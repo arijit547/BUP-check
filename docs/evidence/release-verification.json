@@ -1,0 +1,22 @@
+{
+  "project": "bup-m5-release-6d613bd1",
+  "mode": "release",
+  "simulator": {
+    "status": "ok",
+    "database": "ok",
+    "simulation": {
+      "status": "PAUSED",
+      "tick": 0
+    }
+  },
+  "snapshot": {
+    "tick": 0,
+    "depots": 2,
+    "stations": 4,
+    "routes": 6
+  },
+  "contract_matches": true,
+  "backend_compiles": true,
+  "backend_tests_passed": true,
+  "approval_ledger_empty": true
+}
