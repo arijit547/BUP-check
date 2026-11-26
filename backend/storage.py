@@ -288,17 +288,18 @@ class PlatformStore:
 
     @staticmethod
     def _to_generation(row: sqlite3.Row) -> GenerationInfo:
+        data = dict(row)
         return GenerationInfo(
-            generation_id=row["generation_id"],
-            sim_instance_id=row["sim_instance_id"],
-            scenario_id=row["scenario_id"],
-            scenario_version=row["scenario_version"],
-            seed=row["seed"],
-            last_seen_tick=row["last_seen_tick"],
-            last_seen_sim_time=datetime.fromisoformat(row["last_seen_sim_time"]),
-            status=row["status"],
-            reason=row["reason"],
-            started_at=datetime.fromisoformat(row["started_at"]),
+            generation_id=data["generation_id"],
+            sim_instance_id=data["sim_instance_id"],
+            scenario_id=data["scenario_id"],
+            scenario_version=data["scenario_version"],
+            seed=data["seed"],
+            last_seen_tick=data["last_seen_tick"],
+            last_seen_sim_time=datetime.fromisoformat(data["last_seen_sim_time"]),
+            status=data["status"],
+            reason=data["reason"],
+            started_at=datetime.fromisoformat(data["started_at"]),
         )
 
     def create_generation(

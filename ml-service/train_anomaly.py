@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from statistics import mean, pstdev
 import sys
+import tempfile
 
 import joblib
 import numpy as np
@@ -19,14 +20,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from anomaly_model import FEATURE_NAMES, build_feature_vector, hour_factor  # noqa: E402
 
 
+def _resolve_safe_path(raw: str) -> Path:
+    if "\x00" in raw or ".." in Path(raw).parts:
+        raise ValueError(f"Unsafe path argument: {raw}")
+    resolved = Path(raw).resolve()
+    allowed_roots = (
+        Path(__file__).resolve().parents[1],
+        Path.cwd().resolve(),
+        Path("/datasets").resolve(),
+        Path("/out").resolve(),
+        Path("/app").resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    )
+    if not any(resolved == root or resolved.is_relative_to(root) for root in allowed_roots):
+        raise ValueError(f"Path outside allowed training/artifact roots: {resolved}")
+    return resolved
+
+
 def build_rows_from_csv(
     csv_path: Path,
     *,
     exclude_crises: bool = True,
     assume_unannounced_spikes: bool = True,
 ) -> tuple[np.ndarray, list[dict]]:
+    safe_csv = _resolve_safe_path(str(csv_path))
     series_hist: dict[tuple[str, str], list[dict]] = defaultdict(list)
-    with csv_path.open("r", encoding="utf-8") as fh:
+    with safe_csv.open("r", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             key = (row["station_id"], row["fuel_type"])
             series_hist[key].append(row)
@@ -124,8 +143,8 @@ def main() -> None:
     parser.add_argument("--manifest", default="ml-service/model-manifest.json")
     args = parser.parse_args()
 
-    ds_dir = Path(args.datasets_dir)
-    out_dir = Path(args.out_dir)
+    ds_dir = _resolve_safe_path(args.datasets_dir)
+    out_dir = _resolve_safe_path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     X_train, train_meta = build_rows_from_csv(ds_dir / "normal_baseline.csv", exclude_crises=True, assume_unannounced_spikes=True)
@@ -155,7 +174,9 @@ def main() -> None:
     val_known_fpr = eval_split(pipe, thresh, X_val_known, val_known_meta)["fpr"]
 
     version = "iforest-bup-v1.0.0"
-    artifact_path = out_dir / "isolation_forest.joblib"
+    artifact_path = (out_dir / "isolation_forest.joblib").resolve()
+    if not artifact_path.is_relative_to(out_dir):
+        raise ValueError(f"Artifact path escapes out_dir: {artifact_path}")
     joblib.dump({
         "version": version,
         "features": FEATURE_NAMES,
@@ -184,7 +205,7 @@ def main() -> None:
             "station demand_liters are handled by deterministic domain rules."
         ),
     }
-    manifest_path = Path(args.manifest)
+    manifest_path = _resolve_safe_path(args.manifest)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
     manifest["isolation_forest"] = summary
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import random
@@ -558,6 +559,7 @@ async def _query_ml_models(
     horizon_ticks: int,
     need_chronos: bool,
 ) -> tuple[dict[tuple[str, Fuel], list[ForecastPoint]] | None, str | None, list[dict[str, Any]], str | None]:
+    bounded_horizon = min(288, max(1, int(horizon_ticks)))
     ml_client: httpx.AsyncClient | None = getattr(app_instance.state, "ml_client", None)
     if ml_client is None:
         reason = "ML service disabled or unconfigured; using seasonal/rule mode." if need_chronos else None
@@ -653,11 +655,11 @@ async def _query_ml_models(
                     row["known_spike_multiplier"] = spike_multiplier_at(events, station.id, station.region_id, row["tick"])
                     row["region_factor"] = rfac
                 fut_covs = []
-                for off in range(horizon_ticks):
+                for off in range(bounded_horizon):
                     ft = tick + off
                     f_ts = sim_time + timedelta(minutes=off * tick_minutes)
                     sf = spike_multiplier_at(events, station.id, station.region_id, ft)
-                    if off == 0 and sf == 1.0 and mult != 1.0:
+                    if off == 0 and math.isclose(sf, 1.0, abs_tol=1e-9) and not math.isclose(mult, 1.0, abs_tol=1e-9):
                         sf = mult
                     fut_covs.append({
                         "tick": ft,
@@ -1173,7 +1175,7 @@ async def get_latest_plan(request: Request, response: Response) -> LatestPlanRes
     except (httpx.HTTPError, ValidationError, HTTPException):
         pass
     approval_view = (
-        await reconcile_plan_approval_view(
+        reconcile_plan_approval_view(
             platform_store=store, plan_id=plan.plan_id, shipments=shipments, current_tick=cur_tick
         )
         if plan is not None
@@ -1207,7 +1209,7 @@ async def get_plan_approval(plan_id: str, request: Request, response: Response) 
         _ensure_generation(request.app, sim_inst, shipments)
     except (httpx.HTTPError, ValidationError, HTTPException):
         pass
-    view = await reconcile_plan_approval_view(
+    view = reconcile_plan_approval_view(
         platform_store=store, plan_id=plan_id, shipments=shipments, current_tick=cur_tick
     )
     if view is None:

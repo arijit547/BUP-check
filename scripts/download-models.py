@@ -3,10 +3,22 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import tempfile
 
 MODEL_ID = "amazon/chronos-2"
 REVISION = "29ec3766d36d6f73f0696f85560a422f50e8498c"
 LICENSE = "apache-2.0"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _resolve_cli_path(raw: str) -> Path:
+    if "\x00" in raw or ".." in Path(raw).parts:
+        raise ValueError(f"Unsafe path argument: {raw}")
+    resolved = Path(raw).resolve()
+    allowed_roots = (REPO_ROOT, Path.cwd().resolve(), Path(tempfile.gettempdir()).resolve())
+    if not any(resolved == root or resolved.is_relative_to(root) for root in allowed_roots):
+        raise ValueError(f"Path outside allowed workspace/temp directories: {resolved}")
+    return resolved
 
 
 def verify_files(target: Path, manifest: dict) -> dict:
@@ -16,9 +28,14 @@ def verify_files(target: Path, manifest: dict) -> dict:
     if not expected_hashes:
         raise ValueError("Committed manifest missing chronos2.files_sha256 checksums.")
 
+    base = _resolve_cli_path(str(target))
     verified = {}
     for rel, exp_sha in expected_hashes.items():
-        fpath = target / rel
+        if "\x00" in rel or ".." in Path(rel).parts:
+            raise ValueError(f"Unsafe manifest entry path: {rel}")
+        fpath = (base / rel).resolve()
+        if not fpath.is_relative_to(base):
+            raise ValueError(f"Manifest entry escapes target directory: {rel}")
         if not fpath.exists():
             raise FileNotFoundError(f"Expected model file missing: {fpath}")
         data = fpath.read_bytes()
@@ -46,8 +63,8 @@ def main() -> None:
     parser.add_argument("--update-manifest", action="store_true", help="Write newly computed hashes to manifest (maintainer use only).")
     args = parser.parse_args()
 
-    target = Path(args.target)
-    manifest_path = Path(args.manifest)
+    target = _resolve_cli_path(args.target)
+    manifest_path = _resolve_cli_path(args.manifest)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
 
     if not args.verify_only:
@@ -65,7 +82,9 @@ def main() -> None:
         checksums = {}
         sizes = {}
         for rel in ("config.json", "model.safetensors"):
-            fpath = target / rel
+            fpath = (target / rel).resolve()
+            if not fpath.is_relative_to(target):
+                raise ValueError(f"Unsafe artifact filename: {rel}")
             if not fpath.exists():
                 raise FileNotFoundError(f"Expected file missing after download: {fpath}")
             data = fpath.read_bytes()

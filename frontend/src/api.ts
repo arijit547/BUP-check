@@ -1,8 +1,20 @@
+function assertSafeApiUrl(url: string): string {
+  if (!url.startsWith("/api/") || url.includes("://") || url.startsWith("//")) {
+    throw new Error(`Disallowed API request path: ${url}`);
+  }
+  const resolved = new URL(url, window.location.origin);
+  if (resolved.origin !== window.location.origin || !resolved.pathname.startsWith("/api/")) {
+    throw new Error(`Disallowed API request origin: ${resolved.origin}`);
+  }
+  return `${resolved.pathname}${resolved.search}`;
+}
+
 export async function fetchJsonWithMeta<T>(
   url: string,
   options?: RequestInit,
 ): Promise<{ data: T; headers: Headers }> {
-  const response = await fetch(url, { ...options, cache: "no-store" });
+  const safeUrl = assertSafeApiUrl(url);
+  const response = await fetch(safeUrl, { ...options, cache: "no-store" });
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     try {

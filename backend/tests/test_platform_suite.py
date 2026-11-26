@@ -809,6 +809,28 @@ class JointPlanApprovalAndFreshnessTests(unittest.TestCase):
                 0.994912,
             )
 
+    def test_horizon_bounds_enforced_internally(self) -> None:
+        from datetime import UTC, datetime
+        from intelligence.forecasting import build_seasonal_forecast_points
+        from planning import build_forecasts_response, build_report
+
+        with self.assertRaises(ValueError):
+            build_seasonal_forecast_points(
+                samples=[(0, 10.0)],
+                tick=1,
+                horizon_ticks=289,
+                tick_minutes=15,
+                sim_time=datetime.now(UTC),
+                station_id="s1",
+                region_id="r1",
+                station_detail=None,
+                events=[],
+            )
+        with self.assertRaises(ValueError):
+            build_report(make_world(), [], [], 8, 289)
+        with self.assertRaises(ValueError):
+            build_forecasts_response(make_world(), [], 8, 0, generation_id="g1")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,7 @@ from pathlib import Path
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Any
 from uuid import uuid4
@@ -422,7 +423,13 @@ def main() -> None:
     finally:
         subprocess.run([*compose_cmd, "down", "-v"], cwd=ROOT, env=env, check=False)
 
-    out_path = Path(args.out)
+    raw_out = str(args.out)
+    if "\x00" in raw_out or ".." in Path(raw_out).parts:
+        raise ValueError(f"Unsafe output path argument: {raw_out}")
+    out_path = Path(raw_out).resolve()
+    allowed_roots = (ROOT, Path.cwd().resolve(), Path(tempfile.gettempdir()).resolve())
+    if not any(out_path == root or out_path.is_relative_to(root) for root in allowed_roots):
+        raise ValueError(f"Output path outside allowed workspace/temp directories: {out_path}")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 

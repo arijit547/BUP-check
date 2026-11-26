@@ -134,7 +134,7 @@ export default function PlanningPanel({ approvals, snapshotUnavailable }: {
               Rolling average of the last {data.history_ticks} completed ticks with hour-of-day and crisis-event adjustments.
               Projection horizon {data.horizon_ticks} ticks.
             </p>
-            <div className="planning-scroll" tabIndex={0} role="region" aria-label="Station and fuel forecasts">
+            <section className="planning-scroll" aria-label="Station and fuel forecasts">
               <table className="planning-table">
                 <thead>
                   <tr>
@@ -184,7 +184,7 @@ export default function PlanningPanel({ approvals, snapshotUnavailable }: {
                 </tbody>
               </table>
               {data.forecasts.length === 0 && <p>No stations in the simulator snapshot.</p>}
-            </div>
+            </section>
 
             <h3>Recommended shipment previews</h3>
             <p className="planning-note">Ranked by urgency-weighted unmet demand avoided over the {data.horizon_ticks}-tick horizon.</p>
@@ -216,7 +216,7 @@ export default function PlanningPanel({ approvals, snapshotUnavailable }: {
             {data.recommendations.length === 0 ? (
               <p>No feasible shipment reduces projected unmet demand with the history available.</p>
             ) : (
-              <div className="planning-scroll" tabIndex={0} role="region" aria-label="Ranked shipment previews">
+              <section className="planning-scroll" aria-label="Ranked shipment previews">
                 <table className="planning-table">
                   <thead>
                     <tr>
@@ -250,7 +250,7 @@ export default function PlanningPanel({ approvals, snapshotUnavailable }: {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </section>
             )}
           </>
         )}

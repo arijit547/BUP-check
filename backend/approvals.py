@@ -408,7 +408,7 @@ def build_plan_approval_result(
     )
 
 
-async def reconcile_plan_approval_view(
+def reconcile_plan_approval_view(
     *,
     platform_store: PlatformStore,
     plan_id: str,

@@ -8,6 +8,16 @@ from intelligence.contracts import ConfidenceLevel, DemandObservation, ForecastP
 from intelligence.features import spike_multiplier_at
 
 
+MAX_FORECAST_HORIZON_TICKS = 288
+
+
+def _bounded_horizon(horizon_ticks: int) -> int:
+    horizon = int(horizon_ticks)
+    if horizon < 1 or horizon > MAX_FORECAST_HORIZON_TICKS:
+        raise ValueError(f"horizon_ticks must be within 1..{MAX_FORECAST_HORIZON_TICKS}, got {horizon_ticks}")
+    return min(MAX_FORECAST_HORIZON_TICKS, max(1, horizon))
+
+
 def confidence_for_window(
     observations: int,
     history_ticks: int,
@@ -59,12 +69,13 @@ def build_seasonal_forecast_points(
     current_mult = station_detail.demand_multiplier if station_detail else 1.0
 
     points: list[ForecastPoint] = []
-    for offset in range(horizon_ticks):
+    bounded_horizon = _bounded_horizon(horizon_ticks)
+    for offset in range(bounded_horizon):
         future_tick = tick + offset
         future_time = sim_time + timedelta(minutes=offset * tick_minutes)
         h_factor = hour_factor(profile, future_time.hour)
         s_factor = spike_multiplier_at(events, station_id, region_id, future_tick)
-        if offset == 0 and s_factor == 1.0 and current_mult != 1.0:
+        if offset == 0 and math.isclose(s_factor, 1.0, abs_tol=1e-9) and not math.isclose(current_mult, 1.0, abs_tol=1e-9):
             s_factor = current_mult
         scale = h_factor * s_factor
         p50 = round(max(0.0, base_rate * scale), 3)

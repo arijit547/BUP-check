@@ -27,6 +27,13 @@ interface AllocationPlannerProps {
 }
 
 const PLAN_STORAGE_KEY = "bup.planner.active-plan-id";
+const SAFE_PLAN_ID_RE = /^plan-[a-zA-Z0-9_-]{3,120}$/;
+
+function sanitizePlanId(id: string | null | undefined): string | null {
+  if (typeof id !== "string") return null;
+  const matched = SAFE_PLAN_ID_RE.exec(id);
+  return matched ? matched[0] : null;
+}
 
 export function AllocationPlanner({ routes, tick, disabled = false, onActionComplete }: AllocationPlannerProps) {
   const { mutate } = useSWRConfig();
@@ -57,17 +64,18 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
       try {
         const latest = await fetchJson<LatestPlanResponse>("/api/plans/latest");
         if (!active) return;
-        const storedId = sessionStorage.getItem(PLAN_STORAGE_KEY);
+        const storedId = sanitizePlanId(sessionStorage.getItem(PLAN_STORAGE_KEY));
         if (storedId && (!latest.plan || latest.plan.plan_id !== storedId)) {
           try {
             const savedPlan = await fetchJson<JointPlanSummary>(`/api/plans/${encodeURIComponent(storedId)}`);
             if (!active) return;
-            if (savedPlan.generation_id === latest.generation_id) {
+            const checkedId = sanitizePlanId(savedPlan.plan_id);
+            if (savedPlan.generation_id === latest.generation_id && checkedId) {
               setPlan(savedPlan);
               setStaleGenNotice(null);
               try {
                 const appRes = await fetchJson<PlanApprovalResult>(
-                  `/api/plans/${encodeURIComponent(savedPlan.plan_id)}/approval`,
+                  `/api/plans/${encodeURIComponent(checkedId)}/approval`,
                 );
                 if (active) setApprovalResult(appRes);
               } catch {
@@ -83,7 +91,12 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
           setPlan(latest.plan);
           setApprovalResult(latest.approval);
           setStaleGenNotice(null);
-          sessionStorage.setItem(PLAN_STORAGE_KEY, latest.plan.plan_id);
+          const safePlanId = sanitizePlanId(latest.plan.plan_id);
+          if (safePlanId) {
+            sessionStorage.setItem(PLAN_STORAGE_KEY, safePlanId);
+          } else {
+            sessionStorage.removeItem(PLAN_STORAGE_KEY);
+          }
         }
       } catch {
         // Non-fatal restore attempt
@@ -99,8 +112,10 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
   useEffect(() => {
     if (!plan) return;
     let active = true;
-    const planId = plan.plan_id;
+    const planId = sanitizePlanId(plan.plan_id);
+    if (!planId) return;
     async function syncApprovalStatus() {
+      if (!planId) return;
       try {
         const res = await fetchJson<PlanApprovalResult>(`/api/plans/${encodeURIComponent(planId)}/approval`);
         if (active) setApprovalResult(res);
@@ -147,7 +162,12 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
       });
       setPlan(res);
       setApprovalResult(null);
-      sessionStorage.setItem(PLAN_STORAGE_KEY, res.plan_id);
+      const safePlanId = sanitizePlanId(res.plan_id);
+      if (safePlanId) {
+        sessionStorage.setItem(PLAN_STORAGE_KEY, safePlanId);
+      } else {
+        sessionStorage.removeItem(PLAN_STORAGE_KEY);
+      }
     } catch (err) {
       setPlanError(err instanceof Error ? err.message : "Optimization failed");
     } finally {
@@ -157,11 +177,16 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
 
   async function submitPlanApproval(reconcileOnly = false) {
     if (!plan || plan.shipments.length === 0 || disabled) return;
+    const safePlanId = sanitizePlanId(plan.plan_id);
+    if (!safePlanId) {
+      setBatchError("Invalid plan identifier.");
+      return;
+    }
     setBatchBusy(true);
     setBatchError(null);
     try {
       const res = await fetchJson<PlanApprovalResult>(
-        `/api/plans/${encodeURIComponent(plan.plan_id)}/approval`,
+        `/api/plans/${encodeURIComponent(safePlanId)}/approval`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -184,7 +209,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
       setBatchError(err instanceof Error ? err.message : "Batch plan approval failed");
       try {
         const res = await fetchJson<PlanApprovalResult>(
-          `/api/plans/${encodeURIComponent(plan.plan_id)}/approval`,
+          `/api/plans/${encodeURIComponent(safePlanId)}/approval`,
         );
         setApprovalResult(res);
       } catch {
@@ -197,9 +222,11 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
 
   async function refreshApprovalView() {
     if (!plan) return;
+    const safePlanId = sanitizePlanId(plan.plan_id);
+    if (!safePlanId) return;
     try {
       const res = await fetchJson<PlanApprovalResult>(
-        `/api/plans/${encodeURIComponent(plan.plan_id)}/approval`,
+        `/api/plans/${encodeURIComponent(safePlanId)}/approval`,
       );
       setApprovalResult(res);
       setBatchError(null);
@@ -251,7 +278,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
         </div>
         <div className="badge-row">
           <label className="inline-control">
-            Policy
+            <span>Policy</span>
             <select aria-label="Optimizer policy" value={policy} onChange={(e) => setPolicy(e.target.value as "AUTO" | "CHRONOS2" | "SAFE_REORDER")}>
               <option value="AUTO">OR-Tools + Seasonal</option>
               <option value="CHRONOS2">OR-Tools + Chronos-2</option>
@@ -259,7 +286,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
             </select>
           </label>
           <label className="inline-control">
-            Horizon
+            <span>Horizon</span>
             <select aria-label="Optimizer horizon ticks" value={horizonTicks} onChange={(e) => setHorizonTicks(Number(e.target.value))}>
               <option value={32}>32 ticks</option>
               <option value={96}>96 ticks</option>
@@ -268,7 +295,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
           </label>
           <label className="inline-control">
             <input type="checkbox" checked={singleAction} onChange={(e) => setSingleAction(e.target.checked)} />
-            Single shipment limit
+            <span>Single shipment limit</span>
           </label>
           <button type="button" className="refresh-button" onClick={runOptimize} disabled={planBusy}>
             <Play size={13} />
@@ -452,7 +479,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
                 </div>
               ) : null}
 
-              <div className="planning-scroll" tabIndex={0} role="region" aria-label="Joint plan line-item review">
+              <section className="planning-scroll" aria-label="Joint plan line-item review">
                 <table className="planning-table">
                   <thead>
                     <tr>
@@ -493,7 +520,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
                     })}
                   </tbody>
                 </table>
-              </div>
+              </section>
             </div>
           ) : (
             <p className="muted-inline" style={{ marginTop: 10 }}>

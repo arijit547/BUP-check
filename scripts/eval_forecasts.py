@@ -9,10 +9,29 @@ import math
 from pathlib import Path
 from statistics import mean, pstdev
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, "/app")
 from chronos_adapter import ChronosAdapter  # noqa: E402
+
+
+def _resolve_safe_path(raw: str) -> Path:
+    if "\x00" in raw or ".." in Path(raw).parts:
+        raise ValueError(f"Unsafe path argument: {raw}")
+    resolved = Path(raw).resolve()
+    allowed_roots = (
+        Path(__file__).resolve().parents[1],
+        Path.cwd().resolve(),
+        Path("/datasets").resolve(),
+        Path("/eval-out").resolve(),
+        Path("/app").resolve(),
+        Path("/models").resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    )
+    if not any(resolved == root or resolved.is_relative_to(root) for root in allowed_roots):
+        raise ValueError(f"Path outside allowed evaluation roots: {resolved}")
+    return resolved
 
 
 def hour_factor(profile: str, hour: int) -> float:
@@ -55,8 +74,9 @@ def aggregate_metrics(rows: list[dict]) -> dict:
 
 
 def evaluate_dataset(csv_path: Path, adapter: ChronosAdapter, horizons: list[int], origins: list[int], raw_out: list[dict]) -> dict:
+    safe_csv = _resolve_safe_path(str(csv_path))
     series: dict[tuple[str, str], list[dict]] = defaultdict(list)
-    with csv_path.open("r", encoding="utf-8") as fh:
+    with safe_csv.open("r", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             series[(row["station_id"], row["fuel_type"])].append(row)
     for k in series:
@@ -193,8 +213,8 @@ def main() -> None:
     assert adapter.status == "loaded", f"Chronos load failed: {adapter.error}"
 
     horizons = [4, 16, 32, 96]
-    ds_dir = Path(args.datasets_dir)
-    out_dir = Path(args.out_dir)
+    ds_dir = _resolve_safe_path(args.datasets_dir)
+    out_dir = _resolve_safe_path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     raw_rows: list[dict] = []
 
@@ -209,9 +229,15 @@ def main() -> None:
         ],
     }
 
-    (out_dir / "forecast_eval.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    eval_out = (out_dir / "forecast_eval.json").resolve()
+    if not eval_out.is_relative_to(out_dir):
+        raise ValueError(f"Output path escapes out_dir: {eval_out}")
+    eval_out.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     if raw_rows:
-        with (out_dir / "forecast_predictions.csv").open("w", newline="", encoding="utf-8") as fh:
+        pred_out = (out_dir / "forecast_predictions.csv").resolve()
+        if not pred_out.is_relative_to(out_dir):
+            raise ValueError(f"Prediction output escapes out_dir: {pred_out}")
+        with pred_out.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.DictWriter(fh, fieldnames=list(raw_rows[0].keys()))
             writer.writeheader()
             writer.writerows(raw_rows)

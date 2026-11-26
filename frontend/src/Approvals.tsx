@@ -127,7 +127,7 @@ export function ShipmentPanel({ approvals }: { approvals: ReturnType<typeof useA
         </div>
       )}
       {attempts.length === 0 ? <p>No approvals recorded.</p> : (
-        <div className="planning-scroll" tabIndex={0} role="region" aria-label="Approval history">
+        <section className="planning-scroll" aria-label="Approval history">
           <table className="planning-table">
             <thead><tr><th>Route</th><th>Fuel / quantity</th><th>Status</th><th>Details</th></tr></thead>
             <tbody>
@@ -156,7 +156,7 @@ export function ShipmentPanel({ approvals }: { approvals: ReturnType<typeof useA
               ))}
             </tbody>
           </table>
-        </div>
+        </section>
       )}
     </section>
   );

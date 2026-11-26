@@ -236,7 +236,7 @@
       "category": "observability_security",
       "passed": true,
       "headers_present": true,
-      "prometheus_bytes": 10305
+      "prometheus_bytes": 10308
     },
     {
       "test": "running_mode_provenance_and_freshness",
@@ -246,11 +246,11 @@
       "cached_fallback_observed": false,
       "last_running_sample": [
         200,
-        "37",
-        "37",
+        "35",
+        "35",
         "false",
         "false",
-        "2026-11-26T17:10:46.006258+00:00"
+        "2026-11-26T18:05:24.618413+00:00"
       ],
       "paused_recovery_cached": "false"
     }

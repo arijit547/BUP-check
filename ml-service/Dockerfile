@@ -8,10 +8,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MKL_NUM_THREADS=4
 
 COPY requirements.lock.txt .
-RUN pip install --no-cache-dir --disable-pip-version-check --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.lock.txt
+RUN pip install --no-cache-dir --disable-pip-version-check --require-hashes --only-binary :all: --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.lock.txt
 
 RUN useradd --system --no-create-home mlapp && install -d -o mlapp /app/artifacts /models
-COPY . .
+COPY main.py chronos_adapter.py anomaly_model.py train_anomaly.py model-manifest.json ./
 USER mlapp
 EXPOSE 8002
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002", "--workers", "1"]

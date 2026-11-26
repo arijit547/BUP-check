@@ -227,7 +227,7 @@ def _decompose_demand_windows(sim: httpx.Client, seed_ticks: int) -> dict[str, f
                     st_t <= t < en_t and (not sids or sid in sids)
                     for st_t, en_t, sids in outage_windows
                 )
-                if in_outage and served == 0.0 and unmet > 0.0:
+                if in_outage and math.isclose(served, 0.0, abs_tol=1e-9) and unmet > 0.0:
                     outage_unmet += unmet
 
     depletion_unmet = max(0.0, measured_unmet - outage_unmet)

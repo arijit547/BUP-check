@@ -98,7 +98,7 @@ def build_causal_features(
         h_f = hour_factor(profile, f_time.hour)
         # Only events known at issue time (or current multiplier at offset 0 if event missing)
         s_f = spike_multiplier_at(events, station_id, station.region_id, f_tick)
-        if offset == 0 and s_f == 1.0 and demand_mult != 1.0:
+        if offset == 0 and math.isclose(s_f, 1.0, abs_tol=1e-9) and not math.isclose(demand_mult, 1.0, abs_tol=1e-9):
             s_f = demand_mult
         future_covariates.append({
             "tick": f_tick,

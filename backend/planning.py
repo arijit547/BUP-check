@@ -94,6 +94,16 @@ def _extract_incoming_and_dispatch(
     return incoming, dispatch_used
 
 
+MAX_PLANNING_HORIZON_TICKS = 288
+
+
+def _validate_horizon_ticks(horizon_ticks: int) -> int:
+    horizon = int(horizon_ticks)
+    if horizon < 1 or horizon > MAX_PLANNING_HORIZON_TICKS:
+        raise ValueError(f"horizon_ticks must be within 1..{MAX_PLANNING_HORIZON_TICKS}, got {horizon_ticks}")
+    return min(MAX_PLANNING_HORIZON_TICKS, max(1, horizon))
+
+
 def build_report(
     snapshot: Snapshot,
     history: list[DemandObservation],
@@ -115,6 +125,8 @@ def build_report(
     max_total_liters: float | None = None,
     ml_fallback_reason: str | None = None,
 ) -> PlanningReport:
+    horizon = _validate_horizon_ticks(horizon_ticks)
+    horizon_ticks = horizon
     tick = snapshot.simulation.tick
     sim_time = snapshot.simulation.sim_time
     tick_minutes = snapshot.simulation.tick_minutes
@@ -125,12 +137,12 @@ def build_report(
 
     observed = index_observations_by_series(history, current_tick=tick, history_ticks=history_ticks)
     incoming, dispatch_used = _extract_incoming_and_dispatch(
-        snapshot=snapshot, allocations=allocations, horizon_ticks=horizon_ticks
+        snapshot=snapshot, allocations=allocations, horizon_ticks=horizon
     )
 
     routes_by_station = defaultdict(list)
     for route in snapshot.routes:
-        if route.status == "AVAILABLE" and route.transit_ticks < horizon_ticks:
+        if route.status == "AVAILABLE" and route.transit_ticks < horizon:
             routes_by_station[route.destination_station_id].append(route)
 
     forecasts: list[Forecast] = []
@@ -165,10 +177,12 @@ def build_report(
             if len(samples) < history_ticks:
                 fallback_active = True
                 fb_rate = fallback_demand_rate(samples, detail, region_factor, fuel, sim_time.hour, tick_minutes)
-                fb_series = [fb_rate] * horizon_ticks
+                fb_series = [fb_rate for _ in range(horizon)]
                 demand_series_by_key[key] = fb_series
-                demand_p10_by_key[key] = [round(max(0.0, fb_rate * 0.8), 3)] * horizon_ticks
-                demand_p90_by_key[key] = [round(fb_rate * 1.2, 3)] * horizon_ticks
+                p10_val = round(max(0.0, fb_rate * 0.8), 3)
+                p90_val = round(fb_rate * 1.2, 3)
+                demand_p10_by_key[key] = [p10_val for _ in range(horizon)]
+                demand_p90_by_key[key] = [p90_val for _ in range(horizon)]
                 fb_detail = project_detailed(stock, capacity, fb_series, arrivals, station_open)
                 fb_baseline = round(sum(fb_detail["unmet"]), 3)
                 fb_safety = compute_safety_stock_target(
@@ -377,6 +391,8 @@ def build_forecasts_response(
     fallback_reason: str | None = None,
     matured_accuracy: dict[str, Any] | None = None,
 ) -> ForecastsResponse:
+    horizon = _validate_horizon_ticks(horizon_ticks)
+    horizon_ticks = horizon
     tick = snapshot.simulation.tick
     sim_time = snapshot.simulation.sim_time
     tick_minutes = snapshot.simulation.tick_minutes
@@ -406,7 +422,7 @@ def build_forecasts_response(
                         quantile_method="SEASONAL_SIGMA_BAND",
                         quality_warnings=["insufficient_history_profile_fallback"],
                     )
-                    for off in range(horizon_ticks)
+                    for off in range(horizon)
                 ]
                 s_src: ForecastSource = "PROFILE_FALLBACK"
                 s_ver = "profile-fallback-v1"

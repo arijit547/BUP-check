@@ -117,7 +117,7 @@ export function ForecastExplorer({ generationKey, asOfTick }: ForecastExplorerPr
         </div>
         <div className="badge-row">
           <label className="inline-control">
-            Series
+            <span>Series</span>
             <select
               aria-label="Forecast station and fuel"
               value={selectedKey}
@@ -134,7 +134,7 @@ export function ForecastExplorer({ generationKey, asOfTick }: ForecastExplorerPr
             </select>
           </label>
           <label className="inline-control">
-            Model
+            <span>Model</span>
             <select
               aria-label="Forecast policy override"
               value={policyOverride}
@@ -145,7 +145,7 @@ export function ForecastExplorer({ generationKey, asOfTick }: ForecastExplorerPr
             </select>
           </label>
           <label className="inline-control">
-            History
+            <span>History</span>
             <select
               aria-label="History window ticks"
               value={historyTicks}
@@ -157,7 +157,7 @@ export function ForecastExplorer({ generationKey, asOfTick }: ForecastExplorerPr
             </select>
           </label>
           <label className="inline-control">
-            Horizon
+            <span>Horizon</span>
             <select
               aria-label="Forecast horizon ticks"
               value={horizonTicks}
