@@ -4,7 +4,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY requirements.txt .
 RUN pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
 RUN useradd --system --no-create-home app && install -d -o app /data
-COPY main.py planning.py schemas.py approvals.py observability.py ./
+COPY main.py planning.py schemas.py approvals.py observability.py storage.py security.py ./
+COPY intelligence ./intelligence
 COPY tests ./tests
 USER app
 EXPOSE 8000

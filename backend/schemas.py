@@ -12,6 +12,10 @@ class SnapshotModel(BaseModel):
 
 
 class Simulation(SnapshotModel):
+    id: int | None = None
+    scenario_id: str | None = None
+    scenario_version: str | None = None
+    seed: int | None = None
     tick: int = Field(ge=0)
     tick_minutes: int = Field(gt=0)
     sim_time: datetime = Field(description="Simulator time normalized to UTC.")

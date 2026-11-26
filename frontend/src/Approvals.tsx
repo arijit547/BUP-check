@@ -84,11 +84,36 @@ export function useApprovals() {
       && row.proposal.route_id === proposal.route_id && row.proposal.fuel_type === proposal.fuel_type);
   }
 
-  return { approve, send, pending, busy, notice, outbox, attempts, simulatorError, ready: !!ledger.data };
+  async function cancel(intentId: string) {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setNotice("");
+    try {
+      const attempt = await fetchJson<Attempt>(`${endpoint}/${intentId}/cancel`, { method: "POST" });
+      setNotice(attempt.shipment
+        ? `Simulator allocation #${attempt.shipment.id} cancelled.`
+        : attempt.message ?? "Approval cancelled.");
+      await ledger.mutate(current => ({
+        attempts: [attempt, ...(current?.attempts ?? []).filter(row => row.intent_id !== attempt.intent_id)],
+        simulator_error: current?.simulator_error ?? null,
+      }));
+      void mutate("/api/snapshot");
+      void mutate("/api/planning");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Cancellation failed.");
+      await ledger.mutate();
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  return { approve, cancel, send, pending, busy, notice, outbox, attempts, simulatorError, ready: !!ledger.data };
 }
 
 export function ShipmentPanel({ approvals }: { approvals: ReturnType<typeof useApprovals> }) {
-  const { attempts, outbox, send, busy, notice, simulatorError } = approvals;
+  const { attempts, outbox, send, cancel, busy, notice, simulatorError } = approvals;
   const labels = { READY: "Waiting for fresh state", UNKNOWN: "Outcome unknown", CONFIRMED: "Confirmed", REJECTED: "Rejected" };
   return (
     <section className="panel shipment-panel" aria-labelledby="shipments-title">
@@ -113,6 +138,11 @@ export function ShipmentPanel({ approvals }: { approvals: ReturnType<typeof useA
                   <td>{attempt.shipment ? `#${attempt.shipment.id} · ${attempt.shipment.status.replaceAll("_", " ")}` : labels[attempt.state]}</td>
                   <td className="shipment-details">
                     {attempt.shipment?.failure_reason ?? attempt.message}
+                    {attempt.shipment?.status === "PENDING" && !simulatorError && (
+                      <button className="refresh-button" disabled={busy} onClick={() => void cancel(attempt.intent_id)}>
+                        Cancel pending
+                      </button>
+                    )}
                     {(attempt.state === "UNKNOWN" || attempt.state === "READY") && (
                       <button className="refresh-button" disabled={busy || !!outbox} onClick={() => {
                         const { source_depot_id, destination_station_id, route_id, fuel_type, quantity } = attempt.proposal;

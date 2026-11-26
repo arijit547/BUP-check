@@ -1,0 +1,637 @@
+{
+  "model_id": "amazon/chronos-2",
+  "model_revision": "29ec3766d36d6f73f0696f85560a422f50e8498c",
+  "load_time_ms": 11440.44,
+  "datasets": [
+    {
+      "dataset": "normal_baseline",
+      "origins": [
+        48,
+        96,
+        144,
+        190
+      ],
+      "horizons": {
+        "4": {
+          "rolling_mean": {
+            "points": 192,
+            "mae": 3.458,
+            "rmse": 4.428,
+            "wape": 0.0502,
+            "pinball_p10": 0.665,
+            "pinball_p50": 1.729,
+            "pinball_p90": 0.729,
+            "p10_p90_coverage": 0.7031
+          },
+          "seasonal": {
+            "points": 192,
+            "mae": 3.44,
+            "rmse": 4.455,
+            "wape": 0.0499,
+            "pinball_p10": 0.657,
+            "pinball_p50": 1.72,
+            "pinball_p90": 0.706,
+            "p10_p90_coverage": 0.6719
+          },
+          "chronos2": {
+            "points": 192,
+            "mae": 3.57,
+            "rmse": 4.678,
+            "wape": 0.0518,
+            "pinball_p10": 0.69,
+            "pinball_p50": 1.785,
+            "pinball_p90": 0.776,
+            "p10_p90_coverage": 0.5885
+          }
+        },
+        "16": {
+          "rolling_mean": {
+            "points": 768,
+            "mae": 3.582,
+            "rmse": 4.834,
+            "wape": 0.052,
+            "pinball_p10": 0.708,
+            "pinball_p50": 1.791,
+            "pinball_p90": 0.751,
+            "p10_p90_coverage": 0.6888
+          },
+          "seasonal": {
+            "points": 768,
+            "mae": 3.52,
+            "rmse": 4.73,
+            "wape": 0.0511,
+            "pinball_p10": 0.672,
+            "pinball_p50": 1.76,
+            "pinball_p90": 0.708,
+            "p10_p90_coverage": 0.7031
+          },
+          "chronos2": {
+            "points": 768,
+            "mae": 3.603,
+            "rmse": 5.015,
+            "wape": 0.0523,
+            "pinball_p10": 0.73,
+            "pinball_p50": 1.801,
+            "pinball_p90": 0.714,
+            "p10_p90_coverage": 0.6654
+          }
+        },
+        "32": {
+          "rolling_mean": {
+            "points": 1536,
+            "mae": 18.379,
+            "rmse": 36.727,
+            "wape": 0.2313,
+            "pinball_p10": 4.039,
+            "pinball_p50": 9.189,
+            "pinball_p90": 11.803,
+            "p10_p90_coverage": 0.513
+          },
+          "seasonal": {
+            "points": 1536,
+            "mae": 4.067,
+            "rmse": 5.554,
+            "wape": 0.0512,
+            "pinball_p10": 0.777,
+            "pinball_p50": 2.033,
+            "pinball_p90": 0.823,
+            "p10_p90_coverage": 0.7044
+          },
+          "chronos2": {
+            "points": 1536,
+            "mae": 4.402,
+            "rmse": 6.229,
+            "wape": 0.0554,
+            "pinball_p10": 0.996,
+            "pinball_p50": 2.201,
+            "pinball_p90": 1.004,
+            "p10_p90_coverage": 0.7012
+          }
+        },
+        "96": {
+          "rolling_mean": {
+            "points": 4608,
+            "mae": 28.51,
+            "rmse": 47.546,
+            "wape": 0.3523,
+            "pinball_p10": 8.309,
+            "pinball_p50": 14.255,
+            "pinball_p90": 17.415,
+            "p10_p90_coverage": 0.3887
+          },
+          "seasonal": {
+            "points": 4608,
+            "mae": 4.153,
+            "rmse": 5.644,
+            "wape": 0.0513,
+            "pinball_p10": 0.784,
+            "pinball_p50": 2.077,
+            "pinball_p90": 0.827,
+            "p10_p90_coverage": 0.7083
+          },
+          "chronos2": {
+            "points": 4608,
+            "mae": 4.311,
+            "rmse": 5.977,
+            "wape": 0.0533,
+            "pinball_p10": 0.944,
+            "pinball_p50": 2.156,
+            "pinball_p90": 0.968,
+            "p10_p90_coverage": 0.7253
+          }
+        }
+      },
+      "by_fuel_max_horizon": {
+        "seasonal": {
+          "DIESEL": {
+            "points": 1536,
+            "mae": 5.217,
+            "rmse": 6.635,
+            "wape": 0.0488,
+            "pinball_p10": 0.956,
+            "pinball_p50": 2.609,
+            "pinball_p90": 1.053,
+            "p10_p90_coverage": 0.7188
+          },
+          "PETROL": {
+            "points": 1536,
+            "mae": 4.705,
+            "rmse": 6.304,
+            "wape": 0.0527,
+            "pinball_p10": 0.926,
+            "pinball_p50": 2.353,
+            "pinball_p90": 0.927,
+            "p10_p90_coverage": 0.7031
+          },
+          "OCTANE": {
+            "points": 1536,
+            "mae": 2.537,
+            "rmse": 3.434,
+            "wape": 0.0544,
+            "pinball_p10": 0.471,
+            "pinball_p50": 1.269,
+            "pinball_p90": 0.503,
+            "p10_p90_coverage": 0.7031
+          }
+        },
+        "chronos2": {
+          "DIESEL": {
+            "points": 1536,
+            "mae": 5.573,
+            "rmse": 7.247,
+            "wape": 0.0522,
+            "pinball_p10": 1.26,
+            "pinball_p50": 2.787,
+            "pinball_p90": 1.285,
+            "p10_p90_coverage": 0.7129
+          },
+          "PETROL": {
+            "points": 1536,
+            "mae": 4.788,
+            "rmse": 6.508,
+            "wape": 0.0536,
+            "pinball_p10": 1.048,
+            "pinball_p50": 2.394,
+            "pinball_p90": 1.06,
+            "p10_p90_coverage": 0.7181
+          },
+          "OCTANE": {
+            "points": 1536,
+            "mae": 2.572,
+            "rmse": 3.504,
+            "wape": 0.0551,
+            "pinball_p10": 0.524,
+            "pinball_p50": 1.286,
+            "pinball_p90": 0.558,
+            "p10_p90_coverage": 0.7448
+          }
+        }
+      },
+      "chronos2_latency_ms": {
+        "runs": 4,
+        "p50": 1633.74,
+        "p95": 1633.74
+      }
+    },
+    {
+      "dataset": "crisis_dev_mix",
+      "origins": [
+        36,
+        48,
+        72,
+        96
+      ],
+      "horizons": {
+        "4": {
+          "rolling_mean": {
+            "points": 192,
+            "mae": 12.294,
+            "rmse": 29.006,
+            "wape": 0.1366,
+            "pinball_p10": 5.512,
+            "pinball_p50": 6.147,
+            "pinball_p90": 4.172,
+            "p10_p90_coverage": 0.625
+          },
+          "seasonal": {
+            "points": 192,
+            "mae": 7.234,
+            "rmse": 13.828,
+            "wape": 0.0804,
+            "pinball_p10": 1.174,
+            "pinball_p50": 3.617,
+            "pinball_p90": 3.491,
+            "p10_p90_coverage": 0.7083
+          },
+          "chronos2": {
+            "points": 192,
+            "mae": 8.556,
+            "rmse": 15.082,
+            "wape": 0.0951,
+            "pinball_p10": 1.937,
+            "pinball_p50": 4.278,
+            "pinball_p90": 3.831,
+            "p10_p90_coverage": 0.5156
+          }
+        },
+        "16": {
+          "rolling_mean": {
+            "points": 768,
+            "mae": 19.477,
+            "rmse": 36.668,
+            "wape": 0.2365,
+            "pinball_p10": 10.744,
+            "pinball_p50": 9.738,
+            "pinball_p90": 4.966,
+            "p10_p90_coverage": 0.5117
+          },
+          "seasonal": {
+            "points": 768,
+            "mae": 7.61,
+            "rmse": 14.914,
+            "wape": 0.0924,
+            "pinball_p10": 1.179,
+            "pinball_p50": 3.805,
+            "pinball_p90": 3.982,
+            "p10_p90_coverage": 0.694
+          },
+          "chronos2": {
+            "points": 768,
+            "mae": 8.475,
+            "rmse": 15.432,
+            "wape": 0.1029,
+            "pinball_p10": 1.623,
+            "pinball_p50": 4.238,
+            "pinball_p90": 3.962,
+            "p10_p90_coverage": 0.6107
+          }
+        },
+        "32": {
+          "rolling_mean": {
+            "points": 1536,
+            "mae": 29.144,
+            "rmse": 47.302,
+            "wape": 0.3476,
+            "pinball_p10": 13.988,
+            "pinball_p50": 14.572,
+            "pinball_p90": 10.315,
+            "p10_p90_coverage": 0.388
+          },
+          "seasonal": {
+            "points": 1536,
+            "mae": 7.299,
+            "rmse": 14.859,
+            "wape": 0.0871,
+            "pinball_p10": 1.156,
+            "pinball_p50": 3.649,
+            "pinball_p90": 3.635,
+            "p10_p90_coverage": 0.694
+          },
+          "chronos2": {
+            "points": 1536,
+            "mae": 8.056,
+            "rmse": 15.153,
+            "wape": 0.0961,
+            "pinball_p10": 1.638,
+            "pinball_p50": 4.028,
+            "pinball_p90": 3.526,
+            "p10_p90_coverage": 0.694
+          }
+        },
+        "96": {
+          "rolling_mean": {
+            "points": 4608,
+            "mae": 33.457,
+            "rmse": 51.024,
+            "wape": 0.4076,
+            "pinball_p10": 16.69,
+            "pinball_p50": 16.728,
+            "pinball_p90": 11.749,
+            "p10_p90_coverage": 0.3364
+          },
+          "seasonal": {
+            "points": 4608,
+            "mae": 5.262,
+            "rmse": 9.8,
+            "wape": 0.0641,
+            "pinball_p10": 0.956,
+            "pinball_p50": 2.631,
+            "pinball_p90": 1.82,
+            "p10_p90_coverage": 0.7144
+          },
+          "chronos2": {
+            "points": 4608,
+            "mae": 5.741,
+            "rmse": 10.254,
+            "wape": 0.0699,
+            "pinball_p10": 1.236,
+            "pinball_p50": 2.87,
+            "pinball_p90": 1.943,
+            "p10_p90_coverage": 0.776
+          }
+        }
+      },
+      "by_fuel_max_horizon": {
+        "seasonal": {
+          "DIESEL": {
+            "points": 1536,
+            "mae": 6.431,
+            "rmse": 10.392,
+            "wape": 0.0595,
+            "pinball_p10": 1.119,
+            "pinball_p50": 3.215,
+            "pinball_p90": 2.065,
+            "p10_p90_coverage": 0.707
+          },
+          "PETROL": {
+            "points": 1536,
+            "mae": 6.063,
+            "rmse": 11.832,
+            "wape": 0.0669,
+            "pinball_p10": 1.147,
+            "pinball_p50": 3.032,
+            "pinball_p90": 2.229,
+            "p10_p90_coverage": 0.7188
+          },
+          "OCTANE": {
+            "points": 1536,
+            "mae": 3.291,
+            "rmse": 6.335,
+            "wape": 0.0691,
+            "pinball_p10": 0.601,
+            "pinball_p50": 1.646,
+            "pinball_p90": 1.166,
+            "p10_p90_coverage": 0.7174
+          }
+        },
+        "chronos2": {
+          "DIESEL": {
+            "points": 1536,
+            "mae": 7.095,
+            "rmse": 11.046,
+            "wape": 0.0657,
+            "pinball_p10": 1.626,
+            "pinball_p50": 3.547,
+            "pinball_p90": 2.41,
+            "p10_p90_coverage": 0.7441
+          },
+          "PETROL": {
+            "points": 1536,
+            "mae": 6.688,
+            "rmse": 12.328,
+            "wape": 0.0738,
+            "pinball_p10": 1.406,
+            "pinball_p50": 3.344,
+            "pinball_p90": 2.241,
+            "p10_p90_coverage": 0.7546
+          },
+          "OCTANE": {
+            "points": 1536,
+            "mae": 3.44,
+            "rmse": 6.439,
+            "wape": 0.0723,
+            "pinball_p10": 0.676,
+            "pinball_p50": 1.72,
+            "pinball_p90": 1.179,
+            "p10_p90_coverage": 0.8294
+          }
+        }
+      },
+      "chronos2_latency_ms": {
+        "runs": 4,
+        "p50": 1090.66,
+        "p95": 1090.66
+      }
+    },
+    {
+      "dataset": "crisis_heldout_mix",
+      "origins": [
+        36,
+        44,
+        72,
+        96
+      ],
+      "horizons": {
+        "4": {
+          "rolling_mean": {
+            "points": 192,
+            "mae": 16.15,
+            "rmse": 32.399,
+            "wape": 0.1709,
+            "pinball_p10": 5.845,
+            "pinball_p50": 8.075,
+            "pinball_p90": 5.119,
+            "p10_p90_coverage": 0.6146
+          },
+          "seasonal": {
+            "points": 192,
+            "mae": 11.407,
+            "rmse": 22.135,
+            "wape": 0.1207,
+            "pinball_p10": 1.639,
+            "pinball_p50": 5.703,
+            "pinball_p90": 6.891,
+            "p10_p90_coverage": 0.6615
+          },
+          "chronos2": {
+            "points": 192,
+            "mae": 12.267,
+            "rmse": 22.58,
+            "wape": 0.1298,
+            "pinball_p10": 2.233,
+            "pinball_p50": 6.134,
+            "pinball_p90": 6.921,
+            "p10_p90_coverage": 0.4688
+          }
+        },
+        "16": {
+          "rolling_mean": {
+            "points": 768,
+            "mae": 23.65,
+            "rmse": 39.696,
+            "wape": 0.2649,
+            "pinball_p10": 10.865,
+            "pinball_p50": 11.825,
+            "pinball_p90": 7.21,
+            "p10_p90_coverage": 0.5312
+          },
+          "seasonal": {
+            "points": 768,
+            "mae": 13.809,
+            "rmse": 26.107,
+            "wape": 0.1547,
+            "pinball_p10": 1.863,
+            "pinball_p50": 6.904,
+            "pinball_p90": 9.337,
+            "p10_p90_coverage": 0.638
+          },
+          "chronos2": {
+            "points": 768,
+            "mae": 14.144,
+            "rmse": 25.614,
+            "wape": 0.1584,
+            "pinball_p10": 2.056,
+            "pinball_p50": 7.072,
+            "pinball_p90": 8.814,
+            "p10_p90_coverage": 0.5781
+          }
+        },
+        "32": {
+          "rolling_mean": {
+            "points": 1536,
+            "mae": 29.478,
+            "rmse": 45.604,
+            "wape": 0.3325,
+            "pinball_p10": 14.316,
+            "pinball_p50": 14.739,
+            "pinball_p90": 9.133,
+            "p10_p90_coverage": 0.4486
+          },
+          "seasonal": {
+            "points": 1536,
+            "mae": 12.05,
+            "rmse": 23.843,
+            "wape": 0.1359,
+            "pinball_p10": 1.675,
+            "pinball_p50": 6.025,
+            "pinball_p90": 7.718,
+            "p10_p90_coverage": 0.6458
+          },
+          "chronos2": {
+            "points": 1536,
+            "mae": 12.456,
+            "rmse": 23.392,
+            "wape": 0.1405,
+            "pinball_p10": 2.012,
+            "pinball_p50": 6.228,
+            "pinball_p90": 7.428,
+            "p10_p90_coverage": 0.6621
+          }
+        },
+        "96": {
+          "rolling_mean": {
+            "points": 4608,
+            "mae": 34.201,
+            "rmse": 49.902,
+            "wape": 0.408,
+            "pinball_p10": 17.491,
+            "pinball_p50": 17.101,
+            "pinball_p90": 10.341,
+            "p10_p90_coverage": 0.3822
+          },
+          "seasonal": {
+            "points": 4608,
+            "mae": 6.928,
+            "rmse": 14.615,
+            "wape": 0.0827,
+            "pinball_p10": 1.153,
+            "pinball_p50": 3.464,
+            "pinball_p90": 3.264,
+            "p10_p90_coverage": 0.7068
+          },
+          "chronos2": {
+            "points": 4608,
+            "mae": 7.362,
+            "rmse": 14.63,
+            "wape": 0.0878,
+            "pinball_p10": 1.436,
+            "pinball_p50": 3.681,
+            "pinball_p90": 3.366,
+            "p10_p90_coverage": 0.7595
+          }
+        }
+      },
+      "by_fuel_max_horizon": {
+        "seasonal": {
+          "DIESEL": {
+            "points": 1536,
+            "mae": 8.613,
+            "rmse": 16.789,
+            "wape": 0.0781,
+            "pinball_p10": 1.404,
+            "pinball_p50": 4.306,
+            "pinball_p90": 3.975,
+            "p10_p90_coverage": 0.6914
+          },
+          "PETROL": {
+            "points": 1536,
+            "mae": 7.882,
+            "rmse": 16.693,
+            "wape": 0.0851,
+            "pinball_p10": 1.362,
+            "pinball_p50": 3.941,
+            "pinball_p90": 3.788,
+            "p10_p90_coverage": 0.7272
+          },
+          "OCTANE": {
+            "points": 1536,
+            "mae": 4.291,
+            "rmse": 8.962,
+            "wape": 0.0883,
+            "pinball_p10": 0.693,
+            "pinball_p50": 2.145,
+            "pinball_p90": 2.03,
+            "p10_p90_coverage": 0.7018
+          }
+        },
+        "chronos2": {
+          "DIESEL": {
+            "points": 1536,
+            "mae": 9.235,
+            "rmse": 16.967,
+            "wape": 0.0838,
+            "pinball_p10": 1.909,
+            "pinball_p50": 4.618,
+            "pinball_p90": 4.262,
+            "p10_p90_coverage": 0.7637
+          },
+          "PETROL": {
+            "points": 1536,
+            "mae": 8.45,
+            "rmse": 16.637,
+            "wape": 0.0912,
+            "pinball_p10": 1.581,
+            "pinball_p50": 4.225,
+            "pinball_p90": 3.832,
+            "p10_p90_coverage": 0.7474
+          },
+          "OCTANE": {
+            "points": 1536,
+            "mae": 4.402,
+            "rmse": 8.8,
+            "wape": 0.0906,
+            "pinball_p10": 0.818,
+            "pinball_p50": 2.201,
+            "pinball_p90": 2.003,
+            "p10_p90_coverage": 0.7676
+          }
+        }
+      },
+      "chronos2_latency_ms": {
+        "runs": 4,
+        "p50": 1028.68,
+        "p95": 1028.68
+      }
+    }
+  ]
+}

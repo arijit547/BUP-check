@@ -1,10 +1,17 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
-import { fetchJson } from "./api";
+import { fetchJson, fetchJsonWithMeta } from "./api";
 import PlanningPanel from "./PlanningPanel";
 import { HealthPanel } from "./ObservabilityPanel";
 import { ShipmentPanel, useApprovals } from "./Approvals";
-import { Activity, AlertTriangle, Boxes, CircleHelp, Clock3, Fuel, MapPin, RefreshCw, Route as RouteIcon, ShieldCheck, Truck } from "lucide-react";
+import { AuthBar } from "./AuthBar";
+import { NetworkTopology } from "./NetworkTopology";
+import { ForecastExplorer } from "./ForecastExplorer";
+import { ShortageIncidents } from "./ShortageIncidents";
+import { AllocationPlanner } from "./AllocationPlanner";
+import { EvaluationHealth } from "./EvaluationHealth";
+import type { AuthStatus } from "./types";
+import { Activity, AlertTriangle, Boxes, CircleHelp, Clock3, Cpu, Fuel, LineChart, MapPin, Network, RefreshCw, Route as RouteIcon, ShieldAlert, ShieldCheck, SlidersHorizontal, Truck } from "lucide-react";
 
 type FuelVolumes = { DIESEL: number; PETROL: number; OCTANE: number };
 type Place = { id: string; name: string; region_id: string; inventory: FuelVolumes; capacity: FuelVolumes; status: string; dispatch_capacity_per_tick?: number };
@@ -20,12 +27,32 @@ const number = (value: number) => new Intl.NumberFormat("en-US", { maximumFracti
 const percent = (inventory: number, capacity: number) => capacity > 0 ? Math.round(inventory / capacity * 100) : 0;
 
 export default function App() {
-  const { data, error, isLoading, isValidating, mutate } = useSWR("/api/snapshot", async (url: string) => ({
-    ...await fetchJson<Snapshot>(url),
-    receivedAt: new Date().toLocaleTimeString(),
-  }), { refreshInterval: 10000, revalidateOnFocus: true, shouldRetryOnError: true, errorRetryCount: 5, errorRetryInterval: 3000 });
+  const { data, error, isLoading, isValidating, mutate } = useSWR("/api/snapshot", async (url: string) => {
+    const { data: snap, headers } = await fetchJsonWithMeta<Snapshot>(url);
+    const observedHdr = headers.get("x-bup-observed-at");
+    const observedDate = observedHdr ? new Date(observedHdr) : new Date();
+    const observedLabel = Number.isNaN(observedDate.getTime())
+      ? new Date().toLocaleTimeString()
+      : observedDate.toLocaleTimeString();
+    const asOfTick = Number(headers.get("x-bup-as-of-tick") ?? snap.simulation.tick);
+    const currentTick = Number(headers.get("x-bup-current-tick") ?? snap.simulation.tick);
+    const ageTicks = Number(headers.get("x-bup-age-ticks") ?? Math.max(0, currentTick - asOfTick));
+    return {
+      ...snap,
+      observedLabel,
+      receivedAt: new Date().toLocaleTimeString(),
+      asOfTick,
+      currentTick,
+      ageTicks,
+      cached: headers.get("x-bup-cached") === "true",
+      degraded: headers.get("x-bup-degraded") === "true",
+    };
+  }, { refreshInterval: 10000, revalidateOnFocus: true, shouldRetryOnError: true, errorRetryCount: 5, errorRetryInterval: 3000 });
   const approvals = useApprovals();
-  const stale = error || approvals.simulatorError;
+  const { data: auth, mutate: mutateAuth } = useSWR("/api/auth/session", fetchJson<AuthStatus>, { refreshInterval: 30000 });
+  const authLocked = Boolean(auth?.auth_required && !auth?.authenticated);
+  const stale = error || approvals.simulatorError || data?.degraded;
+  const [activeTab, setActiveTab] = useState<"overview" | "network" | "forecasts" | "shortages" | "optimizer" | "models">("overview");
   const [routeId, setRouteId] = useState("");
   const [fuel, setFuel] = useState<keyof FuelVolumes>("DIESEL");
   const [quantity, setQuantity] = useState(3000);
@@ -56,9 +83,9 @@ export default function App() {
   return <div className="app-shell">
     <aside className="rail"><div className="brand-mark"><Fuel size={22} /></div><div className="rail-line"/><div className="rail-current"><Activity size={19}/></div><div className="rail-bottom"><CircleHelp size={18}/></div></aside>
     <main className="workspace">
-      <header className="topbar"><div className="brand-name"><span className="brand-mini"><Fuel size={15}/></span> BUP <span className="muted">/</span> FUEL OPERATIONS</div><div className="top-actions"><span className="live-pill"><i/> SIMULATION ENVIRONMENT</span><button className="refresh-button" onClick={() => void mutate()} disabled={isValidating} aria-label="Refresh snapshot"><RefreshCw size={15} className={isValidating ? "spin" : ""}/><span>Refresh</span></button><div className="avatar">BO</div></div></header>
-      <section className="page-intro"><div><div className="eyebrow">OPERATIONS CENTER <span>·</span> BANGLADESH NETWORK</div><h1>Fuel network overview</h1><p>Monitor stock positions and review a dispatch against live simulator constraints.</p></div><div className="updated"><span className={stale ? "updated-dot stale-dot" : "updated-dot"}/><div><b>{data ? `TICK ${String(data.simulation.tick).padStart(3, "0")}` : "CONNECTING"}</b><small>{data ? `${stale ? "Stale · last validated" : "Updated"} at ${data.receivedAt}` : "Waiting for simulator"}</small></div></div></section>
-      {stale && <div className="banner error-banner" role="alert"><AlertTriangle size={17}/><span>{error?.message ?? approvals.simulatorError}{data && ` · Showing last validated snapshot from ${data.receivedAt}.`}</span><button onClick={() => void mutate()}>Retry</button></div>}
+      <header className="topbar"><div className="brand-name"><span className="brand-mini"><Fuel size={15}/></span> BUP <span className="muted">/</span> FUEL OPERATIONS</div><div className="top-actions"><AuthBar auth={auth ?? null} onAuthChange={(next) => { void mutateAuth(next, false); void mutate(); }} /><span className="live-pill"><i/> SIMULATION ENVIRONMENT</span><button className="refresh-button" onClick={() => void mutate()} disabled={isValidating} aria-label="Refresh snapshot"><RefreshCw size={15} className={isValidating ? "spin" : ""}/><span>Refresh</span></button><div className="avatar">BO</div></div></header>
+      <section className="page-intro"><div><div className="eyebrow">OPERATIONS CENTER <span>·</span> BANGLADESH NETWORK</div><h1>Fuel network overview</h1><p>Monitor stock positions and review a dispatch against live simulator constraints.</p></div><div className="updated"><span className={stale ? "updated-dot stale-dot" : "updated-dot"}/><div><b>{data ? `TICK ${String(data.simulation.tick).padStart(3, "0")}` : "CONNECTING"}</b><small>{data ? `${stale ? "Stale · last validated" : "Updated"} at ${data.observedLabel}` : "Waiting for simulator"}</small>{data && <div className="muted-inline" style={{ fontSize: 11, marginTop: 2 }}>as of t{data.asOfTick} / sim t{data.currentTick} · age {data.ageTicks}t · {data.cached ? "CACHED" : "FRESH"}{data.degraded ? " · DEGRADED" : ""} · HTTP {data.receivedAt}</div>}</div></div></section>
+      {stale && <div className="banner error-banner" role="alert"><AlertTriangle size={17}/><span>{error?.message ?? approvals.simulatorError ?? (data?.degraded ? "Serving cached snapshot while simulator advances." : "")}{data && ` · Showing validated snapshot from ${data.observedLabel}.`}</span><button onClick={() => void mutate()}>Retry</button></div>}
       {isLoading && !data ? <section className="loading-card"><span className="loader"/><h2>Connecting to the simulator</h2><p>Loading the current network snapshot…</p></section> : data && <>
         <section className="metrics-grid">
           <article className="metric-card"><div className="metric-top"><span>SIMULATION CLOCK</span><Clock3 size={17}/></div><div className="metric-value">{new Date(data.simulation.sim_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}<small> UTC</small></div><div className="metric-foot">Tick {data.simulation.tick} <span>·</span> {data.simulation.tick_minutes} min intervals</div></article>
@@ -67,14 +94,30 @@ export default function App() {
           <article className="metric-card"><div className="metric-top"><span>OPEN CORRIDORS</span><RouteIcon size={17}/></div><div className="metric-value">{data.routes.filter(item => item.status === "AVAILABLE").length}<small> / {data.routes.length}</small></div><div className="metric-foot">Routes available for preview</div></article>
         </section>
 
-        <section className="section-block"><div className="section-heading"><div><div className="eyebrow">STORAGE POSITIONS</div><h2>Inventory by location</h2></div><div className="fuel-legend">{fuels.map(type => <span key={type}><i className={`legend-dot ${type.toLowerCase()}`}/>{labels[type]}</span>)}</div></div>
-          <div className="inventory-groups"><InventoryGroup title="DEPOTS" icon={<Boxes size={16}/>} locations={data.depots} fuels={fuels}/><InventoryGroup title="STATIONS" icon={<MapPin size={16}/>} locations={data.stations} fuels={fuels}/></div>
-        </section>
+        <nav className="nav-tabs" aria-label="Operations views">
+          <button type="button" className={`nav-tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}><Activity size={14}/> Overview</button>
+          <button type="button" className={`nav-tab ${activeTab === "network" ? "active" : ""}`} onClick={() => setActiveTab("network")}><Network size={14}/> Network</button>
+          <button type="button" className={`nav-tab ${activeTab === "forecasts" ? "active" : ""}`} onClick={() => setActiveTab("forecasts")}><LineChart size={14}/> Forecasts</button>
+          <button type="button" className={`nav-tab ${activeTab === "shortages" ? "active" : ""}`} onClick={() => setActiveTab("shortages")}><ShieldAlert size={14}/> Shortages & Incidents</button>
+          <button type="button" className={`nav-tab ${activeTab === "optimizer" ? "active" : ""}`} onClick={() => setActiveTab("optimizer")}><SlidersHorizontal size={14}/> Optimizer & What-If</button>
+          <button type="button" className={`nav-tab ${activeTab === "models" ? "active" : ""}`} onClick={() => setActiveTab("models")}><Cpu size={14}/> Models & Eval</button>
+        </nav>
 
-        <PlanningPanel approvals={approvals} snapshotUnavailable={!data || !!error} />
-        <HealthPanel />
-        <section className="lower-grid"><div className="panel alerts-panel"><div className="panel-heading"><div><div className="eyebrow">STATION WATCH</div><h2>Stock warnings</h2></div><span className={`count-badge ${alerts.length ? "warning-count" : ""}`}>{alerts.length} alerts</span></div><div className="warning-note"><AlertTriangle size={14}/> Inventory-based warnings only. These are not demand forecasts.</div>{alerts.length ? <div className="alert-list">{alerts.map(alert => <div className="alert-row" key={`${alert.station.id}-${alert.fuel}`}><div className={`alert-icon ${alert.critical ? "critical" : ""}`}><AlertTriangle size={16}/></div><div className="alert-copy"><b>{alert.station.name}</b><span>{labels[alert.fuel]} <i>·</i> {number(alert.station.inventory[alert.fuel])} L remaining</span></div><span className={`level ${alert.critical ? "critical-text" : ""}`}>{alert.level}% <small>capacity</small></span></div>)}</div> : <div className="empty-healthy"><ShieldCheck size={20}/><span>No station inventory is below the 35% warning threshold.</span></div>}</div>
-          <div className="panel preview-panel"><div className="panel-heading"><div><div className="eyebrow">READ-ONLY TOOL</div><h2>Allocation preview</h2></div><span className="preview-label">NO DISPATCH</span></div><div className="form-grid"><label>Route<select value={route?.id ?? ""} onChange={event => setRouteId(event.target.value)}>{data.routes.map(item => <option key={item.id} value={item.id} disabled={item.status !== "AVAILABLE"}>{data.depots.find(d => d.id === item.source_depot_id)?.name ?? item.source_depot_id} → {data.stations.find(s => s.id === item.destination_station_id)?.name ?? item.destination_station_id}{item.status === "DISRUPTED" ? " · Disrupted" : ""}</option>)}</select></label><label>Fuel type<select value={fuel} onChange={event => setFuel(event.target.value as keyof FuelVolumes)}>{fuels.map(type => <option key={type} value={type}>{labels[type]}</option>)}</select></label><label className="quantity-field">Quantity <span>(liters)</span><input type="number" min="0" step="100" value={quantity} onChange={event => setQuantity(Number(event.target.value))}/></label></div><div className="route-detail"><span><Truck size={15}/> Transit estimate</span><b>{route ? `${route.transit_ticks} ticks · ${route.transit_ticks * data.simulation.tick_minutes} min` : "No available route"}</b></div><div className={`preview-result ${preview.errors.length ? "preview-invalid" : "preview-valid"}`}>{preview.errors.length ? <><AlertTriangle size={17}/><div><b>Cannot fit this preview</b>{preview.errors.map(message => <p key={message}>{message}</p>)}</div></> : <><ShieldCheck size={19}/><div><b>Fits current snapshot</b><p>{number(quantity)} L {labels[fuel].toLowerCase()} from {source?.name} to {destination?.name}. {number(preview.remaining - quantity)} L capacity remains after this hypothetical shipment.</p></div></>}</div><p className="read-only-foot">Preview uses current inventory and route limits only. No allocation is submitted.</p></div></section>
+        {activeTab === "overview" && <>
+          <section className="section-block"><div className="section-heading"><div><div className="eyebrow">STORAGE POSITIONS</div><h2>Inventory by location</h2></div><div className="fuel-legend">{fuels.map(type => <span key={type}><i className={`legend-dot ${type.toLowerCase()}`}/>{labels[type]}</span>)}</div></div>
+            <div className="inventory-groups"><InventoryGroup title="DEPOTS" icon={<Boxes size={16}/>} locations={data.depots} fuels={fuels}/><InventoryGroup title="STATIONS" icon={<MapPin size={16}/>} locations={data.stations} fuels={fuels}/></div>
+          </section>
+
+          <PlanningPanel approvals={approvals} snapshotUnavailable={!data || !!error || authLocked} />
+          <HealthPanel />
+          <section className="lower-grid"><div className="panel alerts-panel"><div className="panel-heading"><div><div className="eyebrow">STATION WATCH</div><h2>Stock warnings</h2></div><span className={`count-badge ${alerts.length ? "warning-count" : ""}`}>{alerts.length} alerts</span></div><div className="warning-note"><AlertTriangle size={14}/> Inventory-based warnings only. These are not demand forecasts.</div>{alerts.length ? <div className="alert-list">{alerts.map(alert => <div className="alert-row" key={`${alert.station.id}-${alert.fuel}`}><div className={`alert-icon ${alert.critical ? "critical" : ""}`}><AlertTriangle size={16}/></div><div className="alert-copy"><b>{alert.station.name}</b><span>{labels[alert.fuel]} <i>·</i> {number(alert.station.inventory[alert.fuel])} L remaining</span></div><span className={`level ${alert.critical ? "critical-text" : ""}`}>{alert.level}% <small>capacity</small></span></div>)}</div> : <div className="empty-healthy"><ShieldCheck size={20}/><span>No station inventory is below the 35% warning threshold.</span></div>}</div>
+            <div className="panel preview-panel"><div className="panel-heading"><div><div className="eyebrow">READ-ONLY TOOL</div><h2>Allocation preview</h2></div><span className="preview-label">NO DISPATCH</span></div><div className="form-grid"><label>Route<select value={route?.id ?? ""} onChange={event => setRouteId(event.target.value)}>{data.routes.map(item => <option key={item.id} value={item.id} disabled={item.status !== "AVAILABLE"}>{data.depots.find(d => d.id === item.source_depot_id)?.name ?? item.source_depot_id} → {data.stations.find(s => s.id === item.destination_station_id)?.name ?? item.destination_station_id}{item.status === "DISRUPTED" ? " · Disrupted" : ""}</option>)}</select></label><label>Fuel type<select value={fuel} onChange={event => setFuel(event.target.value as keyof FuelVolumes)}>{fuels.map(type => <option key={type} value={type}>{labels[type]}</option>)}</select></label><label className="quantity-field">Quantity <span>(liters)</span><input type="number" min="0" step="100" value={quantity} onChange={event => setQuantity(Number(event.target.value))}/></label></div><div className="route-detail"><span><Truck size={15}/> Transit estimate</span><b>{route ? `${route.transit_ticks} ticks · ${route.transit_ticks * data.simulation.tick_minutes} min` : "No available route"}</b></div><div className={`preview-result ${preview.errors.length ? "preview-invalid" : "preview-valid"}`}>{preview.errors.length ? <><AlertTriangle size={17}/><div><b>Cannot fit this preview</b>{preview.errors.map(message => <p key={message}>{message}</p>)}</div></> : <><ShieldCheck size={19}/><div><b>Fits current snapshot</b><p>{number(quantity)} L {labels[fuel].toLowerCase()} from {source?.name} to {destination?.name}. {number(preview.remaining - quantity)} L capacity remains after this hypothetical shipment.</p></div></>}</div><p className="read-only-foot">Preview uses current inventory and route limits only. No allocation is submitted.</p></div></section>
+        </>}
+        {activeTab === "network" && <NetworkTopology depots={data.depots} stations={data.stations} routes={data.routes} tickMinutes={data.simulation.tick_minutes} />}
+        {activeTab === "forecasts" && <ForecastExplorer asOfTick={data.simulation.tick} />}
+        {activeTab === "shortages" && <ShortageIncidents asOfTick={data.simulation.tick} />}
+        {activeTab === "optimizer" && <AllocationPlanner routes={data.routes} tick={data.simulation.tick} disabled={!!stale || authLocked} onActionComplete={() => { void mutate(); }} />}
+        {activeTab === "models" && <EvaluationHealth onRebound={() => { void mutate(); }} />}
 
       </>}
       <ShipmentPanel approvals={approvals} />

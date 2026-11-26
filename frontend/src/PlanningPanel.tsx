@@ -58,8 +58,14 @@ type Recommendation = {
 
 type PlanningReport = {
   tick: number;
+  current_tick?: number | null;
   history_ticks: number;
   horizon_ticks: number;
+  observed_at?: string | null;
+  age_ticks?: number;
+  cached?: boolean;
+  degraded?: boolean;
+  degraded_reason?: string | null;
   forecasts: Forecast[];
   recommendations: Recommendation[];
   policy_mode: "FORECAST_OPTIMIZER" | "REORDER_FALLBACK";
@@ -105,7 +111,12 @@ export default function PlanningPanel({ approvals, snapshotUnavailable }: {
           {data && (
             <div className="badge-row">
               {data.fallback_active && <span className="count-badge warning-count">FALLBACK ACTIVE</span>}
-              <span className="count-badge">{data.policy_mode.replaceAll("_", " ")} · AS OF TICK {data.tick}</span>
+              {data.cached && <span className="count-badge">CACHED</span>}
+              {data.degraded && <span className="count-badge warning-count">DEGRADED</span>}
+              <span className="count-badge">
+                {data.policy_mode.replaceAll("_", " ")} · AS OF TICK {data.tick}
+                {data.current_tick != null && data.current_tick !== data.tick ? ` / SIM ${data.current_tick} (AGE ${data.age_ticks ?? 0}T)` : ""}
+              </span>
             </div>
           )}
         </div>

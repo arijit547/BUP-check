@@ -1,0 +1,554 @@
+{
+  "command": "C:\\Users\\DFIT\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe scripts/benchmark_matrix.py --sustained-seconds 120",
+  "environment": {
+    "platform": "win32",
+    "python_version": "3.14.5",
+    "cpu_count": 12,
+    "total_ram_gb": 15.21,
+    "avail_ram_gb": 2.75,
+    "git_commit": "3e791d6dea9947ceeff514253e0fd8855f11e3fa",
+    "git_working_tree_dirty": true
+  },
+  "scenarios": {
+    "cached_planning_c2": {
+      "warmup_s": 1.5,
+      "concurrency": 2,
+      "duration_s": 10.01,
+      "total_requests": 1076,
+      "successful_requests": 1076,
+      "error_count": 0,
+      "errors": {},
+      "status_codes": {
+        "200": 1076
+      },
+      "rps": 107.5,
+      "success_rps": 107.5,
+      "latency_ms": {
+        "mean": 17.89,
+        "p50": 14.49,
+        "p95": 17.1,
+        "p99": 19.53,
+        "max": 480.0
+      },
+      "docker_stats": {
+        "bup-load-be9fb1bf-ml-service-1": {
+          "cpu": "0.20%",
+          "mem": "323.5MiB / 7.366GiB",
+          "mem_perc": "4.29%"
+        },
+        "bup-load-be9fb1bf-operator-dashboard-1": {
+          "cpu": "0.00%",
+          "mem": "11.78MiB / 7.366GiB",
+          "mem_perc": "0.16%"
+        },
+        "bup-load-be9fb1bf-prometheus-1": {
+          "cpu": "0.00%",
+          "mem": "19.02MiB / 7.366GiB",
+          "mem_perc": "0.25%"
+        },
+        "bup-load-be9fb1bf-simulator-api-1": {
+          "cpu": "1.51%",
+          "mem": "61.11MiB / 7.366GiB",
+          "mem_perc": "0.81%"
+        },
+        "bup-load-be9fb1bf-snapshot-api-1": {
+          "cpu": "45.60%",
+          "mem": "72.78MiB / 7.366GiB",
+          "mem_perc": "0.96%"
+        }
+      }
+    },
+    "cached_planning_c10": {
+      "warmup_s": 1.5,
+      "concurrency": 10,
+      "duration_s": 10.03,
+      "total_requests": 2703,
+      "successful_requests": 2703,
+      "error_count": 0,
+      "errors": {},
+      "status_codes": {
+        "200": 2703
+      },
+      "rps": 269.6,
+      "success_rps": 269.6,
+      "latency_ms": {
+        "mean": 34.56,
+        "p50": 27.05,
+        "p95": 40.09,
+        "p99": 451.53,
+        "max": 489.44
+      },
+      "docker_stats": {
+        "bup-load-be9fb1bf-ml-service-1": {
+          "cpu": "17.96%",
+          "mem": "324MiB / 7.366GiB",
+          "mem_perc": "4.30%"
+        },
+        "bup-load-be9fb1bf-operator-dashboard-1": {
+          "cpu": "3.20%",
+          "mem": "13.12MiB / 7.366GiB",
+          "mem_perc": "0.17%"
+        },
+        "bup-load-be9fb1bf-prometheus-1": {
+          "cpu": "0.00%",
+          "mem": "18.92MiB / 7.366GiB",
+          "mem_perc": "0.25%"
+        },
+        "bup-load-be9fb1bf-simulator-api-1": {
+          "cpu": "1.24%",
+          "mem": "61.23MiB / 7.366GiB",
+          "mem_perc": "0.81%"
+        },
+        "bup-load-be9fb1bf-snapshot-api-1": {
+          "cpu": "36.55%",
+          "mem": "72.04MiB / 7.366GiB",
+          "mem_perc": "0.96%"
+        }
+      }
+    },
+    "cached_planning_c25": {
+      "warmup_s": 1.5,
+      "concurrency": 25,
+      "duration_s": 10.03,
+      "total_requests": 2455,
+      "successful_requests": 2455,
+      "error_count": 0,
+      "errors": {},
+      "status_codes": {
+        "200": 2455
+      },
+      "rps": 244.74,
+      "success_rps": 244.74,
+      "latency_ms": {
+        "mean": 82.12,
+        "p50": 62.91,
+        "p95": 117.87,
+        "p99": 531.25,
+        "max": 891.0
+      },
+      "docker_stats": {
+        "bup-load-be9fb1bf-ml-service-1": {
+          "cpu": "0.21%",
+          "mem": "323.9MiB / 7.366GiB",
+          "mem_perc": "4.29%"
+        },
+        "bup-load-be9fb1bf-operator-dashboard-1": {
+          "cpu": "0.00%",
+          "mem": "14.36MiB / 7.366GiB",
+          "mem_perc": "0.19%"
+        },
+        "bup-load-be9fb1bf-prometheus-1": {
+          "cpu": "0.00%",
+          "mem": "19.42MiB / 7.366GiB",
+          "mem_perc": "0.26%"
+        },
+        "bup-load-be9fb1bf-simulator-api-1": {
+          "cpu": "1.22%",
+          "mem": "62.02MiB / 7.366GiB",
+          "mem_perc": "0.82%"
+        },
+        "bup-load-be9fb1bf-snapshot-api-1": {
+          "cpu": "0.20%",
+          "mem": "73.42MiB / 7.366GiB",
+          "mem_perc": "0.97%"
+        }
+      }
+    },
+    "uncached_ortools_c2": {
+      "warmup_s": 1.0,
+      "concurrency": 2,
+      "duration_s": 10.82,
+      "total_requests": 22,
+      "successful_requests": 22,
+      "error_count": 0,
+      "errors": {},
+      "status_codes": {
+        "200": 22
+      },
+      "rps": 2.03,
+      "success_rps": 2.03,
+      "latency_ms": {
+        "mean": 938.2,
+        "p50": 1054.4,
+        "p95": 1173.85,
+        "p99": 1176.31,
+        "max": 1176.31
+      },
+      "docker_stats": {
+        "bup-load-be9fb1bf-ml-service-1": {
+          "cpu": "0.22%",
+          "mem": "323.4MiB / 7.366GiB",
+          "mem_perc": "4.29%"
+        },
+        "bup-load-be9fb1bf-operator-dashboard-1": {
+          "cpu": "3.21%",
+          "mem": "13.62MiB / 7.366GiB",
+          "mem_perc": "0.18%"
+        },
+        "bup-load-be9fb1bf-prometheus-1": {
+          "cpu": "0.00%",
+          "mem": "19.75MiB / 7.366GiB",
+          "mem_perc": "0.26%"
+        },
+        "bup-load-be9fb1bf-simulator-api-1": {
+          "cpu": "31.56%",
+          "mem": "77.66MiB / 7.366GiB",
+          "mem_perc": "1.03%"
+        },
+        "bup-load-be9fb1bf-snapshot-api-1": {
+          "cpu": "20.37%",
+          "mem": "103.1MiB / 7.366GiB",
+          "mem_perc": "1.37%"
+        }
+      }
+    },
+    "ml_chronos2_uncached": {
+      "warmup_calls": 1,
+      "measured_requests": 12,
+      "successful_chronos2": 12,
+      "errors": 0,
+      "latency_ms": {
+        "mean": 976.28,
+        "p50": 976.77,
+        "p95": 1029.86,
+        "p99": 1029.86,
+        "max": 1029.86
+      },
+      "docker_stats": {
+        "bup-load-be9fb1bf-ml-service-1": {
+          "cpu": "0.21%",
+          "mem": "347.4MiB / 7.366GiB",
+          "mem_perc": "4.61%"
+        },
+        "bup-load-be9fb1bf-operator-dashboard-1": {
+          "cpu": "0.00%",
+          "mem": "13.38MiB / 7.366GiB",
+          "mem_perc": "0.18%"
+        },
+        "bup-load-be9fb1bf-prometheus-1": {
+          "cpu": "0.13%",
+          "mem": "19.8MiB / 7.366GiB",
+          "mem_perc": "0.26%"
+        },
+        "bup-load-be9fb1bf-simulator-api-1": {
+          "cpu": "1.27%",
+          "mem": "64.64MiB / 7.366GiB",
+          "mem_perc": "0.86%"
+        },
+        "bup-load-be9fb1bf-snapshot-api-1": {
+          "cpu": "12.28%",
+          "mem": "107MiB / 7.366GiB",
+          "mem_perc": "1.42%"
+        }
+      },
+      "last_error": null
+    },
+    "running_simulator_c8": {
+      "warmup_s": 1.5,
+      "concurrency": 8,
+      "duration_s": 12.1,
+      "total_requests": 136,
+      "successful_requests": 136,
+      "error_count": 0,
+      "errors": {},
+      "status_codes": {
+        "200": 136
+      },
+      "rps": 11.24,
+      "success_rps": 11.24,
+      "latency_ms": {
+        "mean": 675.87,
+        "p50": 644.04,
+        "p95": 884.95,
+        "p99": 886.68,
+        "max": 887.4
+      },
+      "provenance_summary": {
+        "samples": 50,
+        "cached_count": 0,
+        "degraded_count": 0,
+        "age_ticks_min": 0,
+        "age_ticks_max": 0,
+        "sample_last": {
+          "as_of_tick": "79",
+          "current_tick": "79",
+          "age_ticks": "0",
+          "cached": "false",
+          "degraded": "false"
+        }
+      },
+      "docker_stats": {
+        "bup-load-be9fb1bf-ml-service-1": {
+          "cpu": "16.96%",
+          "mem": "356.6MiB / 7.366GiB",
+          "mem_perc": "4.73%"
+        },
+        "bup-load-be9fb1bf-operator-dashboard-1": {
+          "cpu": "0.00%",
+          "mem": "12.49MiB / 7.366GiB",
+          "mem_perc": "0.17%"
+        },
+        "bup-load-be9fb1bf-prometheus-1": {
+          "cpu": "0.00%",
+          "mem": "19.79MiB / 7.366GiB",
+          "mem_perc": "0.26%"
+        },
+        "bup-load-be9fb1bf-simulator-api-1": {
+          "cpu": "22.10%",
+          "mem": "65.28MiB / 7.366GiB",
+          "mem_perc": "0.87%"
+        },
+        "bup-load-be9fb1bf-snapshot-api-1": {
+          "cpu": "34.14%",
+          "mem": "119MiB / 7.366GiB",
+          "mem_perc": "1.58%"
+        }
+      },
+      "metrics_snapshot": {
+        "timestamp": "2026-11-26T16:53:06.650375Z",
+        "generation_id": "6abab6de-8f97-4de8-9037-6eb2eea3d219",
+        "total_requests": 6587,
+        "error_count": 0,
+        "error_rate_percent": 0.0,
+        "requests_per_minute": 1000.0,
+        "p50_latency_ms": 30.013,
+        "p95_latency_ms": 764.354,
+        "p99_latency_ms": 1054.379,
+        "fallback_activations": 0,
+        "active_anomalies": 12,
+        "sse_status": "connected",
+        "sse_events_received": 121,
+        "sse_reconnects": 0,
+        "cache_hits": 1208,
+        "cache_misses": 69,
+        "cache_hit_ratio": 0.946,
+        "solver_last_status": "OPTIMAL",
+        "solver_last_ms": 152.58,
+        "forecast_source": "SEASONAL",
+        "fallback_reason": null,
+        "last_recovery_seconds": null,
+        "matured_accuracy": {
+          "matured_points": 1000,
+          "mae": 3.304,
+          "wape": 0.0621,
+          "pinball_p50": 1.652,
+          "p10_p90_coverage": 0.655
+        },
+        "simulator": {
+          "served_demand_liters": 83980.174,
+          "unmet_demand_liters": 25534.058,
+          "service_level": 0.766843,
+          "allocation_liters": 0.0,
+          "allocation_failures": 0
+        },
+        "counter_scope": "process_lifetime_except_simulator_cumulative"
+      }
+    },
+    "sustained_planning_c10": {
+      "warmup_s": 2.0,
+      "concurrency": 10,
+      "duration_s": 120.39,
+      "total_requests": 12806,
+      "successful_requests": 12806,
+      "error_count": 0,
+      "errors": {},
+      "status_codes": {
+        "200": 12806
+      },
+      "rps": 106.37,
+      "success_rps": 106.37,
+      "latency_ms": {
+        "mean": 93.41,
+        "p50": 53.34,
+        "p95": 266.15,
+        "p99": 563.54,
+        "max": 726.9
+      },
+      "provenance_summary": {
+        "samples": 50,
+        "cached_count": 30,
+        "degraded_count": 0,
+        "age_ticks_min": 0,
+        "age_ticks_max": 0,
+        "sample_last": {
+          "as_of_tick": "121",
+          "current_tick": "121",
+          "age_ticks": "0",
+          "cached": "true",
+          "degraded": "false"
+        }
+      },
+      "docker_stats": {
+        "bup-load-be9fb1bf-ml-service-1": {
+          "cpu": "0.21%",
+          "mem": "346.4MiB / 7.366GiB",
+          "mem_perc": "4.59%"
+        },
+        "bup-load-be9fb1bf-operator-dashboard-1": {
+          "cpu": "0.00%",
+          "mem": "14.31MiB / 7.366GiB",
+          "mem_perc": "0.19%"
+        },
+        "bup-load-be9fb1bf-prometheus-1": {
+          "cpu": "0.00%",
+          "mem": "20.32MiB / 7.366GiB",
+          "mem_perc": "0.27%"
+        },
+        "bup-load-be9fb1bf-simulator-api-1": {
+          "cpu": "20.93%",
+          "mem": "79.39MiB / 7.366GiB",
+          "mem_perc": "1.05%"
+        },
+        "bup-load-be9fb1bf-snapshot-api-1": {
+          "cpu": "34.58%",
+          "mem": "121.1MiB / 7.366GiB",
+          "mem_perc": "1.61%"
+        }
+      },
+      "metrics_snapshot": {
+        "timestamp": "2026-11-26T16:55:10.942931Z",
+        "generation_id": "6abab6de-8f97-4de8-9037-6eb2eea3d219",
+        "total_requests": 19455,
+        "error_count": 0,
+        "error_rate_percent": 0.0,
+        "requests_per_minute": 1000.0,
+        "p50_latency_ms": 26.362,
+        "p95_latency_ms": 286.271,
+        "p99_latency_ms": 489.977,
+        "fallback_activations": 0,
+        "active_anomalies": 18,
+        "sse_status": "connected",
+        "sse_events_received": 121,
+        "sse_reconnects": 0,
+        "cache_hits": 2981,
+        "cache_misses": 118,
+        "cache_hit_ratio": 0.9619,
+        "solver_last_status": "OPTIMAL",
+        "solver_last_ms": 172.68,
+        "forecast_source": "SEASONAL",
+        "fallback_reason": null,
+        "last_recovery_seconds": null,
+        "matured_accuracy": {
+          "matured_points": 1000,
+          "mae": 3.012,
+          "wape": 0.0496,
+          "pinball_p50": 1.506,
+          "p10_p90_coverage": 0.709
+        },
+        "simulator": {
+          "served_demand_liters": 83980.174,
+          "unmet_demand_liters": 25534.058,
+          "service_level": 0.766843,
+          "allocation_liters": 0.0,
+          "allocation_failures": 0
+        },
+        "counter_scope": "process_lifetime_except_simulator_cumulative"
+      }
+    },
+    "plan_approval_contention_c4": {
+      "warmup_s": 0.0,
+      "concurrency": 4,
+      "duration_s": 5.35,
+      "total_requests": 35,
+      "successful_requests": 35,
+      "error_count": 0,
+      "errors": {},
+      "status_codes": {
+        "200": 35
+      },
+      "rps": 6.54,
+      "success_rps": 6.54,
+      "latency_ms": {
+        "mean": 539.38,
+        "p50": 424.16,
+        "p95": 1503.66,
+        "p99": 1597.85,
+        "max": 1597.85
+      },
+      "expected_batch_allocations": 10,
+      "actual_simulator_allocations": 10
+    }
+  },
+  "containers": {
+    "bup-load-be9fb1bf-ml-service-1": {
+      "image": "bup-load-be9fb1bf-ml-service",
+      "image_id": "sha256:4652d6aa56a91332c71fb8cebe7c62704be3309a67cce08a65e9dfd0dc0088b6",
+      "memory_limit_bytes": 0,
+      "nano_cpus": 0,
+      "cpu_quota": 0
+    },
+    "bup-load-be9fb1bf-operator-dashboard-1": {
+      "image": "bup-load-be9fb1bf-operator-dashboard",
+      "image_id": "sha256:a2cc2b6dd01366e262232140585defaf24188cc5ed33a19f7e1d25c52d283ac5",
+      "memory_limit_bytes": 0,
+      "nano_cpus": 0,
+      "cpu_quota": 0
+    },
+    "bup-load-be9fb1bf-prometheus-1": {
+      "image": "prom/prometheus:v3.2.1",
+      "image_id": "sha256:6927e0919a144aa7616fd0137d4816816d42f6b816de3af269ab065250859a62",
+      "memory_limit_bytes": 0,
+      "nano_cpus": 0,
+      "cpu_quota": 0
+    },
+    "bup-load-be9fb1bf-simulator-api-1": {
+      "image": "asifmahmoud414/bup-fuel-supply-simulator:1.0.0@sha256:7067050693f49d377d91ca91f2faa6e63f673f69a69429d4693e78e9c0598e92",
+      "image_id": "sha256:7067050693f49d377d91ca91f2faa6e63f673f69a69429d4693e78e9c0598e92",
+      "memory_limit_bytes": 0,
+      "nano_cpus": 0,
+      "cpu_quota": 0
+    },
+    "bup-load-be9fb1bf-snapshot-api-1": {
+      "image": "bup-load-be9fb1bf-snapshot-api",
+      "image_id": "sha256:8ea0ba51ff549c43d709761d3bf28c74783d98d2d1807c385da78923b55e7b28",
+      "memory_limit_bytes": 0,
+      "nano_cpus": 0,
+      "cpu_quota": 0
+    }
+  },
+  "prometheus_and_observability": {
+    "target_health": "up",
+    "last_scrape_error": "",
+    "bup_http_requests_series": 6,
+    "bup_simulator_service_level_series": 1,
+    "api_metrics_final": {
+      "timestamp": "2026-11-26T16:55:24.636569Z",
+      "generation_id": "769dae01-d6f9-4d9f-bb72-ad940227adbe",
+      "total_requests": 19493,
+      "error_count": 0,
+      "error_rate_percent": 0.0,
+      "requests_per_minute": 1000.0,
+      "p50_latency_ms": 28.37,
+      "p95_latency_ms": 420.653,
+      "p99_latency_ms": 584.175,
+      "fallback_activations": 0,
+      "active_anomalies": 5,
+      "sse_status": "connected",
+      "sse_events_received": 178,
+      "sse_reconnects": 0,
+      "cache_hits": 2981,
+      "cache_misses": 119,
+      "cache_hit_ratio": 0.9616,
+      "solver_last_status": "OPTIMAL",
+      "solver_last_ms": 132.11,
+      "forecast_source": "SEASONAL",
+      "fallback_reason": null,
+      "last_recovery_seconds": null,
+      "matured_accuracy": {
+        "matured_points": 0,
+        "mae": null,
+        "wape": null,
+        "pinball_p50": null,
+        "p10_p90_coverage": null
+      },
+      "simulator": {
+        "served_demand_liters": 30788.268,
+        "unmet_demand_liters": 0.0,
+        "service_level": 1.0,
+        "allocation_liters": 0.0,
+        "allocation_failures": 0
+      },
+      "counter_scope": "process_lifetime_except_simulator_cumulative"
+    }
+  }
+}

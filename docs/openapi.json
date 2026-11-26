@@ -2,9 +2,101 @@
   "openapi": "3.1.0",
   "info": {
     "title": "BUP Fuel Operations Snapshot API",
-    "version": "1.0.0"
+    "version": "2.0.0"
   },
   "paths": {
+    "/api/auth/login": {
+      "post": {
+        "summary": "Login",
+        "operationId": "operatorLogin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Logout",
+        "operationId": "operatorLogout",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "summary": "Auth Session",
+        "operationId": "authSession",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/generations/rebind": {
+      "post": {
+        "summary": "Rebind Generation",
+        "operationId": "rebindGeneration",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/snapshot": {
       "get": {
         "summary": "Get Snapshot",
@@ -55,7 +147,7 @@
     "/api/planning": {
       "get": {
         "summary": "Get Planning Report",
-        "description": "Projects station demand from recent history with seasonality/event awareness, detects anomalies and bottlenecks, activates safety reorder fallback when history is incomplete, and ranks standalone shipment alternatives by urgency-weighted unmet demand avoided.",
+        "description": "Projects station demand with seasonality/events/Chronos candidate, detects rule and ML anomalies, runs OR-Tools constrained optimization with safety-stock replenishment and fallback, and validates plans independently.",
         "operationId": "getPlanningReport",
         "parameters": [
           {
@@ -66,11 +158,11 @@
               "type": "integer",
               "maximum": 96,
               "minimum": 1,
-              "description": "Completed ticks used for the rolling mean.",
+              "description": "Completed ticks used for baseline context.",
               "default": 8,
               "title": "History Ticks"
             },
-            "description": "Completed ticks used for the rolling mean."
+            "description": "Completed ticks used for baseline context."
           },
           {
             "name": "horizon_ticks",
@@ -85,6 +177,58 @@
               "title": "Horizon Ticks"
             },
             "description": "Number of ticks to project from the current tick."
+          },
+          {
+            "name": "policy_override",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "AUTO",
+                "SEASONAL",
+                "CHRONOS2",
+                "SAFE_REORDER"
+              ],
+              "type": "string",
+              "default": "AUTO",
+              "title": "Policy Override"
+            }
+          },
+          {
+            "name": "single_action_limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 20,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Single Action Limit"
+            }
+          },
+          {
+            "name": "max_total_liters",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 500000,
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Total Liters"
+            }
           }
         ],
         "responses": {
@@ -94,16 +238,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PlanningReport"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -127,6 +261,651 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/forecasts": {
+      "get": {
+        "summary": "Get Forecasts",
+        "operationId": "getForecasts",
+        "parameters": [
+          {
+            "name": "history_ticks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 96,
+              "minimum": 1,
+              "default": 24,
+              "title": "History Ticks"
+            }
+          },
+          {
+            "name": "horizon_ticks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 288,
+              "minimum": 1,
+              "default": 32,
+              "title": "Horizon Ticks"
+            }
+          },
+          {
+            "name": "policy_override",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "AUTO",
+                "SEASONAL",
+                "CHRONOS2",
+                "SAFE_REORDER"
+              ],
+              "type": "string",
+              "default": "AUTO",
+              "title": "Policy Override"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastsResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Simulator response failed schema validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Simulator is unavailable, reports stale data, or changed during every read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shortages": {
+      "get": {
+        "summary": "Get Shortages",
+        "operationId": "getShortages",
+        "parameters": [
+          {
+            "name": "history_ticks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 96,
+              "minimum": 1,
+              "default": 8,
+              "title": "History Ticks"
+            }
+          },
+          {
+            "name": "horizon_ticks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 288,
+              "minimum": 1,
+              "default": 96,
+              "title": "Horizon Ticks"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortagesResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Simulator response failed schema validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Simulator is unavailable, reports stale data, or changed during every read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/incidents": {
+      "get": {
+        "summary": "Get Anomalies",
+        "operationId": "getIncidents",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "OPEN",
+                "RESOLVED",
+                "ALL"
+              ],
+              "type": "string",
+              "default": "ALL",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomaliesResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Simulator response failed schema validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Simulator is unavailable, reports stale data, or changed during every read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/anomalies": {
+      "get": {
+        "summary": "Get Anomalies",
+        "operationId": "getAnomalies",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "OPEN",
+                "RESOLVED",
+                "ALL"
+              ],
+              "type": "string",
+              "default": "ALL",
+              "title": "Status"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnomaliesResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Simulator response failed schema validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Simulator is unavailable, reports stale data, or changed during every read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/optimize": {
+      "post": {
+        "summary": "Optimize Plan",
+        "operationId": "optimizePlan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptimizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanPreviewSummary"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Simulator response failed schema validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Simulator is unavailable, reports stale data, or changed during every read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/simulate": {
+      "post": {
+        "summary": "Simulate Shipments",
+        "operationId": "simulateShipments",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulateResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Simulator response failed schema validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Simulator is unavailable, reports stale data, or changed during every read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/latest": {
+      "get": {
+        "summary": "Get Latest Plan",
+        "operationId": "getLatestPlan",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestPlanResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{plan_id}": {
+      "get": {
+        "summary": "Get Plan",
+        "operationId": "getPlan",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanPreviewSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plans/{plan_id}/approval": {
+      "get": {
+        "summary": "Get Plan Approval",
+        "operationId": "getPlanApproval",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanApprovalResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Approve Plan",
+        "description": "Server-owned batch approval and idempotent reconciliation for an immutable optimization plan.",
+        "operationId": "approvePlan",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanApprovalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanApprovalResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plan ID not found."
+          },
+          "409": {
+            "description": "Plan belongs to an earlier generation, requires rebind, or config hash mismatched."
+          },
+          "502": {
+            "description": "Simulator response failed schema validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Simulator is unavailable, reports stale data, or changed during every read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -145,6 +924,39 @@
               "type": "string",
               "format": "uuid",
               "title": "Intent Id"
+            }
+          },
+          {
+            "name": "plan_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "decision_rationale",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Rationale"
             }
           }
         ],
@@ -170,7 +982,48 @@
             }
           },
           "409": {
-            "description": "The intent ID already belongs to a different shipment payload."
+            "description": "The intent ID already belongs to a different shipment payload or earlier generation."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/approvals/{intent_id}/cancel": {
+      "post": {
+        "summary": "Cancel Approval",
+        "description": "Explicit operator cancellation of a PENDING simulator allocation.",
+        "operationId": "cancelApproval",
+        "parameters": [
+          {
+            "name": "intent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Intent Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalAttempt"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -190,6 +1043,41 @@
         "summary": "Approvals",
         "description": "Lists durable approval attempts and reconciles simulator shipment statuses when fresh.",
         "operationId": "listApprovals",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "all_generations",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "All Generations"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -200,6 +1088,56 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/models": {
+      "get": {
+        "summary": "Get Models",
+        "operationId": "getModels",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getmodels"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/evaluation": {
+      "get": {
+        "summary": "Get Evaluation",
+        "operationId": "getEvaluation",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getevaluation"
+                }
+              }
+            }
           }
         }
       }
@@ -207,7 +1145,7 @@
     "/api/health": {
       "get": {
         "summary": "Get Health",
-        "description": "Reports component health for the backend API, SQLite ledger, simulator, SSE stream, and intelligence modules.",
+        "description": "Reports fast per-component health without running heavy ML inference.",
         "operationId": "getHealth",
         "responses": {
           "200": {
@@ -255,11 +1193,84 @@
   },
   "components": {
     "schemas": {
+      "AnomaliesResponse": {
+        "properties": {
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id"
+          },
+          "as_of_tick": {
+            "type": "integer",
+            "title": "As Of Tick"
+          },
+          "detector_source": {
+            "type": "string",
+            "enum": [
+              "RULE",
+              "ML",
+              "HYBRID"
+            ],
+            "title": "Detector Source"
+          },
+          "anomaly_model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anomaly Model Version"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "open_count": {
+            "type": "integer",
+            "title": "Open Count"
+          },
+          "resolved_count": {
+            "type": "integer",
+            "title": "Resolved Count"
+          },
+          "incidents": {
+            "items": {
+              "$ref": "#/components/schemas/Anomaly"
+            },
+            "type": "array",
+            "title": "Incidents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generation_id",
+          "as_of_tick",
+          "detector_source",
+          "total",
+          "open_count",
+          "resolved_count",
+          "incidents"
+        ],
+        "title": "AnomaliesResponse"
+      },
       "Anomaly": {
         "properties": {
           "id": {
             "type": "string",
             "title": "Id"
+          },
+          "dedup_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dedup Key"
           },
           "category": {
             "type": "string",
@@ -271,7 +1282,10 @@
               "STATION_OUTAGE",
               "DEPOT_CONSTRAINED",
               "DISPATCH_BOTTLENECK",
-              "SUPPLY_DELAYED"
+              "SUPPLY_DELAYED",
+              "SUPPLY_SHORTFALL",
+              "UNEXPECTED_DEMAND_ANOMALY",
+              "INVENTORY_RESIDUAL_ANOMALY"
             ],
             "title": "Category"
           },
@@ -289,7 +1303,8 @@
               "station",
               "depot",
               "route",
-              "supply"
+              "supply",
+              "system"
             ],
             "title": "Entity Type"
           },
@@ -317,6 +1332,69 @@
           "summary": {
             "type": "string",
             "title": "Summary"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "RULE",
+              "ML",
+              "HYBRID"
+            ],
+            "title": "Source",
+            "default": "RULE"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "RESOLVED"
+            ],
+            "title": "Status",
+            "default": "OPEN"
+          },
+          "first_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Tick"
+          },
+          "last_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Tick"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "expected_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Value"
           },
           "observed_value": {
             "anyOf": [
@@ -350,6 +1428,24 @@
               }
             ],
             "title": "Z Score"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion"
           }
         },
         "type": "object",
@@ -368,6 +1464,38 @@
           "intent_id": {
             "type": "string",
             "title": "Intent Id"
+          },
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id",
+            "default": "legacy"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor",
+            "default": "operator"
+          },
+          "decision_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Rationale"
           },
           "proposal": {
             "$ref": "#/components/schemas/ShipmentPayload"
@@ -402,20 +1530,51 @@
                 "type": "null"
               }
             ]
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           }
         },
         "type": "object",
         "required": [
           "intent_id",
           "proposal",
-          "state",
-          "message",
-          "shipment"
+          "state"
         ],
         "title": "ApprovalAttempt"
       },
       "ApprovalLedger": {
         "properties": {
+          "generation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Id"
+          },
           "attempts": {
             "items": {
               "$ref": "#/components/schemas/ApprovalAttempt"
@@ -433,14 +1592,62 @@
               }
             ],
             "title": "Simulator Error"
+          },
+          "rebind_required": {
+            "type": "boolean",
+            "title": "Rebind Required",
+            "default": false
           }
         },
         "type": "object",
         "required": [
-          "attempts",
-          "simulator_error"
+          "attempts"
         ],
         "title": "ApprovalLedger"
+      },
+      "AuthStatus": {
+        "properties": {
+          "auth_required": {
+            "type": "boolean",
+            "title": "Auth Required"
+          },
+          "authenticated": {
+            "type": "boolean",
+            "title": "Authenticated"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "operator",
+                  "viewer"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "auth_required",
+          "authenticated"
+        ],
+        "title": "AuthStatus"
       },
       "ComponentHealth": {
         "properties": {
@@ -482,6 +1689,66 @@
         ],
         "title": "ComponentHealth"
       },
+      "DemandObservation": {
+        "properties": {
+          "station_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Station Id"
+          },
+          "fuel_type": {
+            "type": "string",
+            "enum": [
+              "DIESEL",
+              "PETROL",
+              "OCTANE"
+            ],
+            "title": "Fuel Type"
+          },
+          "tick": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Tick"
+          },
+          "demand_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Demand Liters"
+          },
+          "served_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Served Liters"
+          },
+          "unmet_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmet Liters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_id",
+          "fuel_type",
+          "tick",
+          "demand_liters"
+        ],
+        "title": "DemandObservation"
+      },
       "Depot": {
         "properties": {
           "id": {
@@ -514,7 +1781,7 @@
           },
           "dispatch_capacity_per_tick": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Dispatch Capacity Per Tick"
           }
         },
@@ -580,7 +1847,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -603,7 +1870,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -615,7 +1882,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -627,7 +1894,7 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -639,13 +1906,49 @@
             "anyOf": [
               {
                 "type": "number",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
               }
             ],
             "title": "Demand Std Liters"
+          },
+          "p10_total_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P10 Total Liters"
+          },
+          "p50_total_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50 Total Liters"
+          },
+          "p90_total_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90 Total Liters"
           },
           "confidence": {
             "type": "string",
@@ -660,7 +1963,7 @@
           "confidence_score": {
             "type": "number",
             "title": "Confidence Score",
-            "default": 0
+            "default": 0.0
           },
           "shortage_risk": {
             "type": "string",
@@ -677,12 +1980,91 @@
           "stockout_probability": {
             "type": "number",
             "title": "Stockout Probability",
+            "default": 0.0
+          },
+          "probability_calibration": {
+            "type": "string",
+            "enum": [
+              "SCENARIO_HEURISTIC",
+              "EMPIRICAL_UNCALIBRATED",
+              "HOLD_OUT_VALIDATED"
+            ],
+            "title": "Probability Calibration",
+            "default": "SCENARIO_HEURISTIC"
+          },
+          "outage_unmet_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Outage Unmet Liters",
+            "default": 0.0
+          },
+          "depletion_unmet_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Depletion Unmet Liters",
+            "default": 0.0
+          },
+          "first_unmet_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Unmet Tick"
+          },
+          "time_to_stockout_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time To Stockout Minutes"
+          },
+          "stockout_duration_ticks": {
+            "type": "integer",
+            "title": "Stockout Duration Ticks",
             "default": 0
+          },
+          "safety_stock_target_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Safety Stock Target Liters",
+            "default": 0.0
           },
           "fallback_used": {
             "type": "boolean",
             "title": "Fallback Used",
             "default": false
+          },
+          "forecast_source": {
+            "type": "string",
+            "enum": [
+              "CHRONOS2",
+              "SEASONAL",
+              "PROFILE_FALLBACK",
+              "REORDER_FALLBACK"
+            ],
+            "title": "Forecast Source",
+            "default": "SEASONAL"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version",
+            "default": "seasonal-v1"
+          },
+          "trajectory_p50": {
+            "items": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "type": "array",
+            "title": "Trajectory P50"
           }
         },
         "type": "object",
@@ -699,21 +2081,320 @@
         ],
         "title": "Forecast"
       },
+      "ForecastPoint": {
+        "properties": {
+          "tick": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Tick"
+          },
+          "sim_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Sim Time"
+          },
+          "p10": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P10"
+          },
+          "p50": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "P50"
+          },
+          "p90": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90"
+          },
+          "actual_demand_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Demand Liters"
+          },
+          "quantile_method": {
+            "type": "string",
+            "enum": [
+              "CHRONOS2_QUANTILE",
+              "SEASONAL_SIGMA_BAND",
+              "POINT_ONLY"
+            ],
+            "title": "Quantile Method",
+            "default": "SEASONAL_SIGMA_BAND"
+          },
+          "quality_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Quality Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tick",
+          "sim_time",
+          "p50"
+        ],
+        "title": "ForecastPoint"
+      },
+      "ForecastSeries": {
+        "properties": {
+          "station_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Station Id"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "fuel_type": {
+            "type": "string",
+            "enum": [
+              "DIESEL",
+              "PETROL",
+              "OCTANE"
+            ],
+            "title": "Fuel Type"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "CHRONOS2",
+              "SEASONAL",
+              "PROFILE_FALLBACK",
+              "REORDER_FALLBACK"
+            ],
+            "title": "Source"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version"
+          },
+          "observations": {
+            "type": "integer",
+            "title": "Observations"
+          },
+          "first_history_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First History Tick"
+          },
+          "last_history_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last History Tick"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/DemandObservation"
+            },
+            "type": "array",
+            "title": "History"
+          },
+          "forecast": {
+            "items": {
+              "$ref": "#/components/schemas/ForecastPoint"
+            },
+            "type": "array",
+            "title": "Forecast"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "mae_matured": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mae Matured"
+          },
+          "wape_matured": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wape Matured"
+          },
+          "p10_p90_coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P10 P90 Coverage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_id",
+          "station_name",
+          "fuel_type",
+          "source",
+          "model_version",
+          "observations",
+          "first_history_tick",
+          "last_history_tick"
+        ],
+        "title": "ForecastSeries"
+      },
+      "ForecastsResponse": {
+        "properties": {
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id"
+          },
+          "as_of_tick": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "As Of Tick"
+          },
+          "tick_minutes": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Tick Minutes"
+          },
+          "horizon_ticks": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Horizon Ticks"
+          },
+          "history_ticks": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "History Ticks"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "CHRONOS2",
+              "SEASONAL",
+              "PROFILE_FALLBACK",
+              "REORDER_FALLBACK"
+            ],
+            "title": "Source"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version"
+          },
+          "feature_version": {
+            "type": "string",
+            "title": "Feature Version",
+            "default": "v1.0.0"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "forecast_generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Forecast Generated At"
+          },
+          "age_ticks": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Age Ticks",
+            "default": 0
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/ForecastSeries"
+            },
+            "type": "array",
+            "title": "Series"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generation_id",
+          "as_of_tick",
+          "tick_minutes",
+          "horizon_ticks",
+          "history_ticks",
+          "source",
+          "model_version",
+          "forecast_generated_at"
+        ],
+        "title": "ForecastsResponse"
+      },
       "FuelVolumes": {
         "properties": {
           "DIESEL": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Diesel"
           },
           "PETROL": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Petrol"
           },
           "OCTANE": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Octane"
           }
         },
@@ -724,6 +2405,83 @@
           "OCTANE"
         ],
         "title": "FuelVolumes"
+      },
+      "GenerationInfo": {
+        "properties": {
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id"
+          },
+          "sim_instance_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sim Instance Id"
+          },
+          "scenario_id": {
+            "type": "string",
+            "title": "Scenario Id"
+          },
+          "scenario_version": {
+            "type": "string",
+            "title": "Scenario Version"
+          },
+          "seed": {
+            "type": "integer",
+            "title": "Seed"
+          },
+          "last_seen_tick": {
+            "type": "integer",
+            "title": "Last Seen Tick"
+          },
+          "last_seen_sim_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen Sim Time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "SUPERSEDED",
+              "REBIND_REQUIRED"
+            ],
+            "title": "Status"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generation_id",
+          "scenario_id",
+          "scenario_version",
+          "seed",
+          "last_seen_tick",
+          "last_seen_sim_time",
+          "status",
+          "started_at"
+        ],
+        "title": "GenerationInfo"
       },
       "HTTPValidationError": {
         "properties": {
@@ -756,6 +2514,27 @@
           "version": {
             "type": "string",
             "title": "Version"
+          },
+          "generation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Id"
+          },
+          "circuit_breaker_state": {
+            "type": "string",
+            "enum": [
+              "CLOSED",
+              "OPEN",
+              "HALF_OPEN"
+            ],
+            "title": "Circuit Breaker State",
+            "default": "CLOSED"
           },
           "components": {
             "additionalProperties": {
@@ -791,12 +2570,74 @@
         ],
         "title": "HealthReport"
       },
+      "LatestPlanResponse": {
+        "properties": {
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanPreviewSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanApprovalResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "generation_id"
+        ],
+        "title": "LatestPlanResponse"
+      },
+      "LoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
       "MetricsReport": {
         "properties": {
           "timestamp": {
             "type": "string",
             "format": "date-time",
             "title": "Timestamp"
+          },
+          "generation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Id"
           },
           "total_requests": {
             "type": "integer",
@@ -873,6 +2714,94 @@
             "type": "integer",
             "title": "Sse Reconnects"
           },
+          "cache_hits": {
+            "type": "integer",
+            "title": "Cache Hits",
+            "default": 0
+          },
+          "cache_misses": {
+            "type": "integer",
+            "title": "Cache Misses",
+            "default": 0
+          },
+          "cache_hit_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Hit Ratio"
+          },
+          "solver_last_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solver Last Status"
+          },
+          "solver_last_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solver Last Ms"
+          },
+          "forecast_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forecast Source"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "last_recovery_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Recovery Seconds"
+          },
+          "matured_accuracy": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matured Accuracy"
+          },
           "simulator": {
             "anyOf": [
               {
@@ -893,6 +2822,11 @@
               }
             ],
             "title": "Simulator"
+          },
+          "counter_scope": {
+            "type": "string",
+            "title": "Counter Scope",
+            "default": "process_lifetime_except_simulator_cumulative"
           }
         },
         "type": "object",
@@ -913,11 +2847,494 @@
         ],
         "title": "MetricsReport"
       },
+      "OptimizeRequest": {
+        "properties": {
+          "history_ticks": {
+            "type": "integer",
+            "maximum": 96.0,
+            "minimum": 1.0,
+            "title": "History Ticks",
+            "default": 8
+          },
+          "horizon_ticks": {
+            "type": "integer",
+            "maximum": 288.0,
+            "minimum": 1.0,
+            "title": "Horizon Ticks",
+            "default": 96
+          },
+          "policy_override": {
+            "type": "string",
+            "enum": [
+              "AUTO",
+              "SEASONAL",
+              "CHRONOS2",
+              "SAFE_REORDER"
+            ],
+            "title": "Policy Override",
+            "default": "AUTO"
+          },
+          "single_action_limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 20.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Single Action Limit"
+          },
+          "max_total_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 500000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Total Liters"
+          }
+        },
+        "type": "object",
+        "title": "OptimizeRequest"
+      },
+      "PlanApprovalItemResult": {
+        "properties": {
+          "item_index": {
+            "type": "integer",
+            "title": "Item Index"
+          },
+          "intent_id": {
+            "type": "string",
+            "title": "Intent Id"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/ShipmentPayload"
+          },
+          "eta_ticks": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Ticks"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "UNSENT",
+              "READY",
+              "UNKNOWN",
+              "CONFIRMED",
+              "REJECTED"
+            ],
+            "title": "State"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "shipment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Shipment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_index",
+          "intent_id",
+          "proposal",
+          "state"
+        ],
+        "title": "PlanApprovalItemResult"
+      },
+      "PlanApprovalRequest": {
+        "properties": {
+          "decision_rationale": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Rationale"
+          },
+          "expected_config_hash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Config Hash"
+          },
+          "reconcile_only": {
+            "type": "boolean",
+            "title": "Reconcile Only",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "PlanApprovalRequest"
+      },
+      "PlanApprovalResult": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id"
+          },
+          "as_of_tick": {
+            "type": "integer",
+            "title": "As Of Tick"
+          },
+          "current_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Tick"
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor",
+            "default": "operator"
+          },
+          "decision_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Rationale"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "CONFIRMED",
+              "PARTIAL",
+              "STOPPED",
+              "UNKNOWN"
+            ],
+            "title": "State"
+          },
+          "stopped_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped Reason"
+          },
+          "reconcile_required": {
+            "type": "boolean",
+            "title": "Reconcile Required",
+            "default": false
+          },
+          "requires_new_plan": {
+            "type": "boolean",
+            "title": "Requires New Plan",
+            "default": false
+          },
+          "total_shipments": {
+            "type": "integer",
+            "title": "Total Shipments"
+          },
+          "confirmed_count": {
+            "type": "integer",
+            "title": "Confirmed Count"
+          },
+          "rejected_count": {
+            "type": "integer",
+            "title": "Rejected Count"
+          },
+          "unknown_count": {
+            "type": "integer",
+            "title": "Unknown Count"
+          },
+          "unsent_count": {
+            "type": "integer",
+            "title": "Unsent Count"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlanApprovalItemResult"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "generation_id",
+          "as_of_tick",
+          "state",
+          "total_shipments",
+          "confirmed_count",
+          "rejected_count",
+          "unknown_count",
+          "unsent_count",
+          "items"
+        ],
+        "title": "PlanApprovalResult"
+      },
+      "PlanPreviewSummary": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id"
+          },
+          "as_of_tick": {
+            "type": "integer",
+            "title": "As Of Tick"
+          },
+          "horizon_ticks": {
+            "type": "integer",
+            "title": "Horizon Ticks"
+          },
+          "policy_mode": {
+            "type": "string",
+            "enum": [
+              "OR_TOOLS_SEASONAL",
+              "OR_TOOLS_CHRONOS2",
+              "FORECAST_OPTIMIZER",
+              "SAFE_REORDER",
+              "REORDER_FALLBACK"
+            ],
+            "title": "Policy Mode"
+          },
+          "forecast_source": {
+            "type": "string",
+            "enum": [
+              "CHRONOS2",
+              "SEASONAL",
+              "PROFILE_FALLBACK",
+              "REORDER_FALLBACK"
+            ],
+            "title": "Forecast Source"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version"
+          },
+          "solver_status": {
+            "type": "string",
+            "title": "Solver Status"
+          },
+          "solver_runtime_ms": {
+            "type": "number",
+            "title": "Solver Runtime Ms",
+            "default": 0.0
+          },
+          "config_hash": {
+            "type": "string",
+            "title": "Config Hash"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "total_allocated_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Total Allocated Liters",
+            "default": 0.0
+          },
+          "unmet_before_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Unmet Before Liters",
+            "default": 0.0
+          },
+          "unmet_after_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Unmet After Liters",
+            "default": 0.0
+          },
+          "unmet_avoided_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Unmet Avoided Liters",
+            "default": 0.0
+          },
+          "no_action_unmet_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "No Action Unmet Liters",
+            "default": 0.0
+          },
+          "safe_baseline_unmet_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Safe Baseline Unmet Liters",
+            "default": 0.0
+          },
+          "p10_unmet_after_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P10 Unmet After Liters"
+          },
+          "p90_unmet_after_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90 Unmet After Liters"
+          },
+          "binding_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Binding Constraints"
+          },
+          "shipments": {
+            "items": {
+              "$ref": "#/components/schemas/Recommendation"
+            },
+            "type": "array",
+            "title": "Shipments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "generation_id",
+          "as_of_tick",
+          "horizon_ticks",
+          "policy_mode",
+          "forecast_source",
+          "model_version",
+          "solver_status",
+          "config_hash"
+        ],
+        "title": "PlanPreviewSummary"
+      },
       "PlanningReport": {
         "properties": {
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id",
+            "default": "default"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id",
+            "default": "plan-ephemeral"
+          },
           "tick": {
             "type": "integer",
             "title": "Tick"
+          },
+          "current_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Tick"
           },
           "history_ticks": {
             "type": "integer",
@@ -926,6 +3343,88 @@
           "horizon_ticks": {
             "type": "integer",
             "title": "Horizon Ticks"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "forecast_generated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forecast Generated At"
+          },
+          "age_ticks": {
+            "type": "integer",
+            "title": "Age Ticks",
+            "default": 0
+          },
+          "cached": {
+            "type": "boolean",
+            "title": "Cached",
+            "default": false
+          },
+          "degraded": {
+            "type": "boolean",
+            "title": "Degraded",
+            "default": false
+          },
+          "degraded_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Degraded Reason"
+          },
+          "forecast_source": {
+            "type": "string",
+            "enum": [
+              "CHRONOS2",
+              "SEASONAL",
+              "PROFILE_FALLBACK",
+              "REORDER_FALLBACK"
+            ],
+            "title": "Forecast Source",
+            "default": "SEASONAL"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version",
+            "default": "seasonal-v1"
+          },
+          "solver_status": {
+            "type": "string",
+            "title": "Solver Status",
+            "default": "OPTIMAL"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
           },
           "forecasts": {
             "items": {
@@ -941,14 +3440,27 @@
             "type": "array",
             "title": "Recommendations"
           },
+          "joint_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanPreviewSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "policy_mode": {
             "type": "string",
             "enum": [
+              "OR_TOOLS_SEASONAL",
+              "OR_TOOLS_CHRONOS2",
               "FORECAST_OPTIMIZER",
+              "SAFE_REORDER",
               "REORDER_FALLBACK"
             ],
             "title": "Policy Mode",
-            "default": "FORECAST_OPTIMIZER"
+            "default": "OR_TOOLS_SEASONAL"
           },
           "fallback_active": {
             "type": "boolean",
@@ -1025,7 +3537,7 @@
           },
           "quantity": {
             "type": "number",
-            "exclusiveMinimum": 0,
+            "exclusiveMinimum": 0.0,
             "title": "Quantity"
           }
         },
@@ -1041,6 +3553,22 @@
       },
       "Recommendation": {
         "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id",
+            "default": "plan-ephemeral"
+          },
+          "generation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Id"
+          },
           "route_id": {
             "type": "string",
             "minLength": 1,
@@ -1075,7 +3603,7 @@
           },
           "quantity_liters": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Quantity Liters"
           },
           "arrival_tick": {
@@ -1092,32 +3620,35 @@
           },
           "unmet_before_liters": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Unmet Before Liters"
           },
           "unmet_after_liters": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Unmet After Liters"
           },
           "unmet_avoided_liters": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Unmet Avoided Liters"
           },
           "policy_mode": {
             "type": "string",
             "enum": [
+              "OR_TOOLS_SEASONAL",
+              "OR_TOOLS_CHRONOS2",
               "FORECAST_OPTIMIZER",
+              "SAFE_REORDER",
               "REORDER_FALLBACK"
             ],
             "title": "Policy Mode",
-            "default": "FORECAST_OPTIMIZER"
+            "default": "OR_TOOLS_SEASONAL"
           },
           "priority_score": {
             "type": "number",
             "title": "Priority Score",
-            "default": 0
+            "default": 0.0
           },
           "stockout_tick_before": {
             "anyOf": [
@@ -1245,12 +3776,12 @@
           },
           "transit_ticks": {
             "type": "integer",
-            "exclusiveMinimum": 0,
+            "exclusiveMinimum": 0.0,
             "title": "Transit Ticks"
           },
           "max_shipment": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Max Shipment"
           }
         },
@@ -1267,6 +3798,14 @@
       },
       "Shipment": {
         "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          },
           "source_depot_id": {
             "type": "string",
             "minLength": 1,
@@ -1293,25 +3832,49 @@
           },
           "quantity": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Quantity"
           },
           "created_tick": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Created Tick"
+          },
+          "departure_tick": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Tick"
           },
           "expected_arrival_tick": {
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"
               }
             ],
             "title": "Expected Arrival Tick"
+          },
+          "actual_arrival_tick": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Arrival Tick"
           },
           "status": {
             "type": "string",
@@ -1323,14 +3886,6 @@
               "CANCELLED"
             ],
             "title": "Status"
-          },
-          "id": {
-            "type": "integer",
-            "title": "Id"
-          },
-          "idempotency_key": {
-            "type": "string",
-            "title": "Idempotency Key"
           },
           "failure_reason": {
             "anyOf": [
@@ -1346,16 +3901,15 @@
         },
         "type": "object",
         "required": [
+          "id",
+          "idempotency_key",
           "source_depot_id",
           "destination_station_id",
           "route_id",
           "fuel_type",
           "quantity",
           "created_tick",
-          "status",
-          "id",
-          "idempotency_key",
-          "failure_reason"
+          "status"
         ],
         "title": "Shipment"
       },
@@ -1387,7 +3941,7 @@
           },
           "quantity": {
             "type": "number",
-            "exclusiveMinimum": 0,
+            "exclusiveMinimum": 0.0,
             "title": "Quantity"
           },
           "idempotency_key": {
@@ -1406,16 +3960,470 @@
         ],
         "title": "ShipmentPayload"
       },
+      "ShortageDetail": {
+        "properties": {
+          "station_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Station Id"
+          },
+          "station_name": {
+            "type": "string",
+            "title": "Station Name"
+          },
+          "region_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Region Id"
+          },
+          "fuel_type": {
+            "type": "string",
+            "enum": [
+              "DIESEL",
+              "PETROL",
+              "OCTANE"
+            ],
+            "title": "Fuel Type"
+          },
+          "station_status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "OUTAGE"
+            ],
+            "title": "Station Status"
+          },
+          "current_inventory": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Current Inventory"
+          },
+          "capacity": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Capacity"
+          },
+          "incoming_committed_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Incoming Committed Liters"
+          },
+          "inventory_position": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Inventory Position"
+          },
+          "safety_stock_target": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Safety Stock Target"
+          },
+          "urgency_rank": {
+            "type": "integer",
+            "title": "Urgency Rank",
+            "default": 0
+          },
+          "shortage_risk": {
+            "type": "string",
+            "enum": [
+              "CRITICAL",
+              "HIGH",
+              "MEDIUM",
+              "LOW",
+              "UNKNOWN"
+            ],
+            "title": "Shortage Risk"
+          },
+          "stockout_probability": {
+            "type": "number",
+            "title": "Stockout Probability"
+          },
+          "probability_calibration": {
+            "type": "string",
+            "title": "Probability Calibration"
+          },
+          "first_zero_stock_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Zero Stock Tick"
+          },
+          "first_unmet_tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Unmet Tick"
+          },
+          "time_to_stockout_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time To Stockout Minutes"
+          },
+          "stockout_duration_ticks": {
+            "type": "integer",
+            "title": "Stockout Duration Ticks"
+          },
+          "unmet_p10_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmet P10 Liters"
+          },
+          "unmet_p50_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmet P50 Liters"
+          },
+          "unmet_p90_liters": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unmet P90 Liters"
+          },
+          "outage_unmet_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Outage Unmet Liters",
+            "default": 0.0
+          },
+          "depletion_unmet_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Depletion Unmet Liters",
+            "default": 0.0
+          },
+          "projected_trajectory": {
+            "items": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "type": "array",
+            "title": "Projected Trajectory"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_id",
+          "station_name",
+          "region_id",
+          "fuel_type",
+          "station_status",
+          "current_inventory",
+          "capacity",
+          "incoming_committed_liters",
+          "inventory_position",
+          "safety_stock_target",
+          "shortage_risk",
+          "stockout_probability",
+          "probability_calibration",
+          "first_zero_stock_tick",
+          "first_unmet_tick",
+          "time_to_stockout_minutes",
+          "stockout_duration_ticks"
+        ],
+        "title": "ShortageDetail"
+      },
+      "ShortagesResponse": {
+        "properties": {
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id"
+          },
+          "as_of_tick": {
+            "type": "integer",
+            "title": "As Of Tick"
+          },
+          "horizon_ticks": {
+            "type": "integer",
+            "title": "Horizon Ticks"
+          },
+          "forecast_source": {
+            "type": "string",
+            "enum": [
+              "CHRONOS2",
+              "SEASONAL",
+              "PROFILE_FALLBACK",
+              "REORDER_FALLBACK"
+            ],
+            "title": "Forecast Source"
+          },
+          "shortages": {
+            "items": {
+              "$ref": "#/components/schemas/ShortageDetail"
+            },
+            "type": "array",
+            "title": "Shortages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generation_id",
+          "as_of_tick",
+          "horizon_ticks",
+          "forecast_source",
+          "shortages"
+        ],
+        "title": "ShortagesResponse"
+      },
+      "SimulateRequest": {
+        "properties": {
+          "history_ticks": {
+            "type": "integer",
+            "maximum": 96.0,
+            "minimum": 1.0,
+            "title": "History Ticks",
+            "default": 8
+          },
+          "horizon_ticks": {
+            "type": "integer",
+            "maximum": 288.0,
+            "minimum": 1.0,
+            "title": "Horizon Ticks",
+            "default": 96
+          },
+          "shipments": {
+            "items": {
+              "$ref": "#/components/schemas/SimulateShipmentInput"
+            },
+            "type": "array",
+            "maxItems": 25,
+            "title": "Shipments"
+          }
+        },
+        "type": "object",
+        "title": "SimulateRequest"
+      },
+      "SimulateResponse": {
+        "properties": {
+          "generation_id": {
+            "type": "string",
+            "title": "Generation Id"
+          },
+          "as_of_tick": {
+            "type": "integer",
+            "title": "As Of Tick"
+          },
+          "horizon_ticks": {
+            "type": "integer",
+            "title": "Horizon Ticks"
+          },
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "validation_errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Validation Errors"
+          },
+          "forecast_source": {
+            "type": "string",
+            "enum": [
+              "CHRONOS2",
+              "SEASONAL",
+              "PROFILE_FALLBACK",
+              "REORDER_FALLBACK"
+            ],
+            "title": "Forecast Source"
+          },
+          "total_allocated_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Total Allocated Liters"
+          },
+          "unmet_before_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Unmet Before Liters"
+          },
+          "unmet_after_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Unmet After Liters"
+          },
+          "unmet_avoided_liters": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Unmet Avoided Liters"
+          },
+          "station_impacts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Station Impacts"
+          },
+          "depot_utilization": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/FuelVolumes"
+                },
+                {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Depot Utilization"
+          }
+        },
+        "type": "object",
+        "required": [
+          "generation_id",
+          "as_of_tick",
+          "horizon_ticks",
+          "valid",
+          "forecast_source",
+          "total_allocated_liters",
+          "unmet_before_liters",
+          "unmet_after_liters",
+          "unmet_avoided_liters"
+        ],
+        "title": "SimulateResponse"
+      },
+      "SimulateShipmentInput": {
+        "properties": {
+          "source_depot_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Source Depot Id"
+          },
+          "destination_station_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Destination Station Id"
+          },
+          "route_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Route Id"
+          },
+          "fuel_type": {
+            "type": "string",
+            "enum": [
+              "DIESEL",
+              "PETROL",
+              "OCTANE"
+            ],
+            "title": "Fuel Type"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Quantity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_depot_id",
+          "destination_station_id",
+          "route_id",
+          "fuel_type",
+          "quantity"
+        ],
+        "title": "SimulateShipmentInput"
+      },
       "Simulation": {
         "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Version"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
           "tick": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Tick"
           },
           "tick_minutes": {
             "type": "integer",
-            "exclusiveMinimum": 0,
+            "exclusiveMinimum": 0.0,
             "title": "Tick Minutes"
           },
           "sim_time": {
@@ -1454,12 +4462,12 @@
           },
           "start_tick": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Start Tick"
           },
           "end_tick": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "End Tick"
           },
           "status": {
@@ -1491,27 +4499,27 @@
         "properties": {
           "served_demand_liters": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Served Demand Liters"
           },
           "unmet_demand_liters": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Unmet Demand Liters"
           },
           "service_level": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Service Level"
           },
           "allocation_liters": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Allocation Liters"
           },
           "allocation_failures": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Allocation Failures"
           }
         },
@@ -1645,19 +4653,19 @@
           },
           "quantity": {
             "type": "number",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Quantity"
           },
           "planned_tick": {
             "type": "integer",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Planned Tick"
           },
           "actual_tick": {
             "anyOf": [
               {
                 "type": "integer",
-                "minimum": 0
+                "minimum": 0.0
               },
               {
                 "type": "null"

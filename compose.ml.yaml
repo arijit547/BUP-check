@@ -1,0 +1,9 @@
+services:
+  snapshot-api:
+    environment:
+      ML_SERVICE_URL: http://ml-service:8002
+    depends_on:
+      simulator-api:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy

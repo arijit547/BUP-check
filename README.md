@@ -1,80 +1,65 @@
-# BUP Fuel Operations
+# BUP Fuel Supply Operations Platform
 
 Repository: `https://github.com/arijit547/BUP-check`
 
-## Milestone 1
+A full-stack, decision-intelligent fuel supply operations platform built on top of the unmodified official BUP Fuel Supply Simulator (`asifmahmoud414/bup-fuel-supply-simulator:1.0.0@sha256:7067050693f49d377d91ca91f2faa6e63f673f69a69429d4693e78e9c0598e92`).
 
-Clone the repository, run Docker with the Linux engine, then start the official simulator and the FastAPI snapshot service.
+## Quick Start
 
+### Core Mode (No Local ML Weights Required; `<15 ms` Cached Planning)
 ```powershell
-git clone https://github.com/arijit547/BUP-check.git
-cd BUP-check
-docker compose up --build --wait
-Invoke-RestMethod http://localhost:8001/api/snapshot
+docker compose up -d --build --wait
+# Dashboard: http://127.0.0.1:3000
+# Backend API & OpenAPI: http://127.0.0.1:8001/docs
+# Official Simulator: http://127.0.0.1:8000/docs
 ```
 
-The simulator starts paused by default. Its liveness endpoint is at `http://localhost:8000/v1/health`. Set `SIMULATOR_PORT` or `SNAPSHOT_PORT` before running Compose to change the host ports.
-
-The operator dashboard is available at `http://localhost:3000`. Set `DASHBOARD_PORT` to change its host port. It refreshes the simulator snapshot every 10 seconds.
-
-`GET /api/snapshot` returns the simulator tick and time, depot and station stock and capacity in liters, and routes with their status and transit time. The API reads the simulator's public REST endpoints and checks the instance before and after collection. Upstream data is validated before it reaches clients.
-
-The [OpenAPI contract](docs/openapi.json) is exported from the FastAPI schemas and route definitions. The running app serves the same contract at `/openapi.json`. After an intentional API change, refresh the saved artifact with the running service.
-
+### Full ML + Prometheus Mode (Offline `amazon/chronos-2` + `IsolationForest` + Prometheus)
+On a clean checkout, download/verify the pinned Hugging Face weights (`ml-service/weights/chronos-2`) and train the locked `IsolationForest` artifact (`ml-service/artifacts/isolation_forest.joblib`) first:
 ```powershell
-Invoke-WebRequest http://localhost:8001/openapi.json -OutFile docs/openapi.json
+python -u scripts/prepare-models.py
+docker compose -f compose.yaml -f compose.ml.yaml --profile ml --profile monitoring up -d --build --wait
+# Prometheus UI: http://127.0.0.1:9090
 ```
 
-See the [submission checklist](docs/submission-checklist.md) for the acceptance checks for later milestones.
+See [`.env.example`](.env.example) for optional operator authentication (`OPERATOR_AUTH_MODE=required`), `RUNNING_COHERENT_GRACE_SECONDS` (`15.0`), timeout, and port overrides.
 
-## Milestone 3
+## Key Capabilities
 
-The dashboard shows demand forecasts and ranked shipment previews from the read-only planning API.
+- **Resilient Simulator Integration:** Atomic `before==after` snapshot collection, SSE stream invalidation & reconnect, bounded `RUNNING` coherence grace window (`15.0 s`) with explicit provenance headers (`X-Bup-{As-Of-Tick,Current-Tick,Age-Ticks,Observed-At,Cached,Degraded}`), circuit breaker, and SQLite WAL generation ledger isolating simulator resets (`POST /api/generations/rebind`).
+- **Demand Forecasting (`GET /api/forecasts`):** Seasonal covariate baseline (`seasonal-v2.0`, `<15 ms`), offline Hugging Face `amazon/chronos-2` candidate (`policy_override=CHRONOS2`) with native `p10–p90` quantiles, and cold-start profile fallback (`profile-fallback-v1`).
+- **Hybrid Anomaly & Incident Ledger (`GET /api/anomalies`, `/api/incidents`):** Deterministic domain rules for all 6 simulator events (`demand_spike`, `route_disruption`, `station_outage`, `depot_constraint`, `shipment_delay`, `supply_shortfall`) enriched by `iforest-bup-v1.0.0` (`IsolationForest`) with 2-tick clear hysteresis.
+- **Shortage Risk & Constrained Optimization (`GET /api/shortages`, `POST /api/optimize`, `POST /api/simulate`):** Separates unpreventable station outages from stock depletion, computes lead-time safety stock targets, solves global constrained dispatch with Google OR-Tools `CBC` (with optional `max_recommendations` and `max_total_liters` budgets), independently validates every shipment, and retains a safe reorder fallback (`SAFE_REORDER`).
+- **Backend-Owned Joint Plan & Human-Gated Execution:** Explicit operator review and idempotent execution via backend-persisted `plan_id` (`GET /api/plans/latest`, `PUT /api/plans/{plan_id}/approval`) and single-shipment ledger (`PUT /api/approvals/{intent_id}`, `POST /api/approvals/{intent_id}/cancel`) with generation-safe `409` reset blocking, timeout-after-commit reconciliation, and optional PBKDF2/Bearer authentication.
+- **6-Tab Operator Dashboard:** Overview, Interactive Network Topology SVG, Demand Forecast Explorer (`p10–p90` band), Shortage & Incident Timeline, Joint Optimizer & Counterfactual Simulator, and Models & Evaluation View.
 
-```powershell
-Invoke-RestMethod 'http://localhost:8001/api/planning?history_ticks=8&horizon_ticks=96'
-```
-
-- `history_ticks` selects 1–96 completed ticks. The rolling mean uses observed demand in liters for each station and fuel, while projections incorporate hour-of-day demand profiles, active/scheduled `demand_spike` events, confidence scoring, and a reorder safety fallback when history is incomplete.
-- `horizon_ticks` selects 1–288 ticks, starting with the current simulator tick. The stockout tick is the first projected tick to end with zero stock during positive demand.
-- Projected arrivals are applied before demand. Existing `IN_TRANSIT` and `PENDING` shipments count at their expected arrival ticks.
-- Recommendations are standalone previews ranked by urgency-weighted unmet liters avoided, then by total unmet avoided and earliest arrival, and include risk reduction, signals, constraints, and alternative routes.
-- Anomaly detection flags demand spikes/drops, stockout risk, disrupted routes, station outages, depot dispatch bottlenecks, and delayed supply arrivals.
-- `GET /api/health` and `GET /api/metrics` expose component health (API, SQLite ledger, simulator REST, `/v1/stream` SSE watcher, forecast/decision services), p50/p95/p99 latency, error rate, and simulator metrics.
-
-## Milestone 4
-
-Select **Review** on a recommendation, check the displayed route, fuel and quantity, then select **Approve shipment**. The API checks the proposal against fresh simulator state and returns the recorded outcome. The shipment panel shows the simulator allocation ID and status after confirmation.
-
-- `PUT /api/approvals/{intent_id}` accepts a UUID identifying the operator intent and an exact shipment proposal with `source_depot_id`, `destination_station_id`, `route_id`, `fuel_type`, and `quantity` in liters. Reuse the same UUID and body for retries. A changed payload for the same UUID returns `409`.
-- `GET /api/approvals` lists approval attempts and reconciles them with the simulator allocation ledger. The `approvals` Compose volume persists SQLite records across backend restarts. Run the approval API as one worker.
-- **Waiting for fresh state** means the proposal needs validation. **Outcome unknown** means a write may have reached the simulator. Retry the stored approval to reconcile the result. A retry reuses the original simulator key and payload.
-- A stale-data response or simulator outage pauses new approvals. The open dashboard shows when the displayed snapshot and forecast were last validated. The simulator must preserve its allocation ledger for safe replay across application restarts. A simulator reset clears that ledger, so use a fresh approval volume for a new simulator scenario.
-
-## Milestone 5
-
-Use Node.js 24 and Docker Compose with support for the `!reset` override directive. The simulator and base images are pinned by digest. The frontend installs from its npm lockfile, and the backend pins its Python dependencies.
+## Verification Commands
 
 ```powershell
-npm ci --prefix frontend
+npm ci --prefix frontend --dry-run
 npm run build --prefix frontend
-npm exec --prefix frontend -- playwright install chromium
+$env:BUP_CHROMIUM_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 node scripts/verify.mjs e2e
-node scripts/verify.mjs benchmark
-node scripts/verify.mjs forecast-policy
 node scripts/verify.mjs reorder-policy
+node scripts/verify.mjs forecast-policy
+python -u scripts/verify_ml_lifecycle.py
+python -u scripts/run-resilience-matrix.py
+python -u scripts/eval_policies.py
+python -u scripts/benchmark_matrix.py --sustained-seconds 120
+python -u scripts/test_live_scenarios.py
+node scripts/verify_live_ui.mjs
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -no-color .github/workflows/ci.yml .github/workflows/release.yml
 ```
 
-Each verification command starts a new Compose project with random loopback ports and a new approval volume. It writes logs, health checks, and results into `artifacts/<mode>/` and removes the temporary stack. The benchmark defaults to 2 concurrent clients for 15 seconds. Set `BUP_BENCH_CONCURRENCY` or `BUP_BENCH_SECONDS` to run a different workload. To use a locally installed Chromium browser for the end-to-end test, set `BUP_CHROMIUM_PATH` to the executable path.
+## Technical Documentation
 
-### Run a tagged release
-
-CI runs on branch pushes and pull requests. Pushing a `v*` tag triggers the same checks, then publishes both images to GHCR and smoke-tests them in a fresh Compose project. Use your lowercase GitHub owner and repository in the image prefix. Authenticate with GHCR before pulling private packages.
-
-```powershell
-$env:BUP_IMAGE_PREFIX = 'ghcr.io/arijit547/bup-check'
-$env:BUP_RELEASE_TAG = 'v1.0.0'
-docker compose -f compose.yaml -f compose.release.yaml up --no-build --pull always --wait
-```
-
-Open the dashboard at `http://localhost:3000`. Use `node scripts/verify.mjs release` for an isolated smoke test with those same images. See the [submission evidence](docs/submission-evidence.md) and [live demo runbook](docs/demo-runbook.md).
+- [System Architecture](docs/architecture.md)
+- [Model Card (`Chronos-2` & `IsolationForest`)](docs/model-card.md)
+- [Decision & Optimization Methodology](docs/decision-methodology.md)
+- [Forecast, Anomaly & Policy Evaluation](docs/evaluation.md)
+- [Test & Verification Report](docs/test-report.md)
+- [Requirements Traceability Matrix](docs/requirements-traceability.md)
+- [Implementation Status](docs/implementation-status.md)
+- [Live Demo Runbook](docs/demo-runbook.md)
+- [Submission Evidence](docs/submission-evidence.md) & [Submission Checklist](docs/submission-checklist.md)
+- [Saved OpenAPI Contract](docs/openapi.json)

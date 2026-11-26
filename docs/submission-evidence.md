@@ -1,122 +1,53 @@
 # BUP Fuel Operations submission evidence
 
-## Architecture
+## Architecture & Methodology
 
-```mermaid
-flowchart LR
-    Operator["Operator browser"] --> Web["React dashboard via Nginx"]
-    Web --> API["FastAPI"]
-    API -->|"REST state, demand history, events, arrivals, metrics"| Sim["Official BUP simulator"]
-    Sim -.->|"SSE /v1/stream cache invalidation"| API
-    API --> Planner["Time-aware forecast, anomaly detection, fallback & optimizer"]
-    Planner --> API
-    API -->|"Persist operator intent and original payload"| DB[("SQLite approval ledger")]
-    API -->|"Submit explicitly approved allocation"| Sim
-    API --> Obs["/api/health, /api/metrics, access logs & load telemetry"]
-    Web --> Obs
-    Sim --> Obs
-```
+- System Architecture & Mermaid Diagram: [architecture.md](architecture.md)
+- Pretrained ML & Anomaly Model Card: [model-card.md](model-card.md)
+- Optimization & Decision Methodology: [decision-methodology.md](decision-methodology.md)
+- Requirements Traceability: [requirements-traceability.md](requirements-traceability.md)
 
-## Startup and health checks
+## Startup, Unit Tests, E2E & ML Lifecycle
 
-Clean isolated Compose runs (`node scripts/verify.mjs e2e` and local `node scripts/verify.mjs release`) started `simulator-api`, `snapshot-api`, and `operator-dashboard` with all containers healthy and verified:
+- **Backend Suite (`14/14` PASS):** Isolated container run (`python -m unittest discover -s tests -v`, `5.764 s`) validates data hygiene, causal features, OR-Tools constraints, joint `PUT /api/plans/{plan_id}/approval` replay/partial/timeout/reset handling, `RUNNING` provenance headers, `stale_data` blocking, and curated-evidence vs unmeasured `/api/evaluation` fallback.
+- **ML Lifecycle & Offline Verification (`4/4` PASS, [ml_verification.json](evidence/ml_verification.json)):**
+  1. Core Compose stack boots with zero model weights (`SEASONAL` default).
+  2. `ml-service /health/ready` returns `503` `partial` when `chronos-2` is absent even when `iforest` loads.
+  3. [prepare-models.py](../scripts/prepare-models.py) prepares artifacts and passes `--network=none` offline load (`OFFLINE_PREP_OK`, `amazon/chronos-2` `29ec3766d36d` + `iforest-bup-v1.0.0`, `9,191.8 ms`). Tampered weights fail SHA-256 verification (`download-models.py --verify-only` exits `1`).
+  4. Live `ml-service` runs `CHRONOS2` (`3,104.91 ms`), gracefully degrades to `SEASONAL` on container stop, and recovers `CHRONOS2` on restart.
 
-- `GET /v1/health` returned `{"status":"ok","database":"ok","simulation":{"status":"PAUSED","tick":0}}`.
-- `snapshot-api` compiled cleanly (`python -m compileall -q /app`), passed all 3 unit/integration tests (`python -m unittest discover -s /app/tests -v`), and served `/openapi.json` matching [openapi.json](openapi.json).
-- `GET /api/snapshot` returned tick `0` with 2 depots, 4 stations, and 6 routes; `GET /api/approvals` returned an empty ledger.
-- Local release smoke test verified [compose.release.yaml](../compose.release.yaml) with prebuilt tagged images (`bup-local-release-backend:v0.0.0-local` and `bup-local-release-dashboard:v0.0.0-local`).
+## Forecast, Anomaly & Matched-Budget Policy Evaluation
 
-- [Startup and Playwright results](evidence/operator-verification.json)
-- [Release image startup health check](evidence/release-verification.json)
-- [Live demo runbook](demo-runbook.md)
+Measured results stored cleanly in curated [evidence/](evidence/) and detailed in [evaluation.md](evaluation.md):
+- **Chronological Forecast Evaluation ([forecast_eval.json](evidence/forecast_eval.json)):** `SEASONAL` achieves `4.153` MAE (`0.0513` WAPE) on `normal_baseline` and `6.928` MAE (`0.0827` WAPE) on `crisis_heldout_mix` at `h=96` (`~85%` / `~80%` MAE drop vs `rolling_mean`), while offline `amazon/chronos-2` provides higher `p10–p90` coverage (`0.7253` / `0.7595`) and lower `h=16, 32` crisis RMSE (`25.614` / `23.392`).
+- **Matched-Budget Policy Comparison ([policy_comparison.json](evidence/policy_comparison.json)):** Across 4 crisis scenarios under `single_1_7k`, `batch_4_15k`, and `unconstrained` budgets (`0` failures, `warmup_unmet_liters = 0.0`, `2,696.711 L` unpreventable `outage_unmet_liters`):
+  - `reorder` / `safe_reorder` win tight matched budgets (`0.974414` in `single_1_7k`, `0.994912` in `batch_4_15k`).
+  - `reorder_batch_unconstrained` (`157` dispatches) and `ortools_seasonal_batch_unconstrained` (`797` dispatches) both hit the `0.994912` service ceiling (`0.993412` measured window, `320.415 L` depletion unmet); `ortools_chronos2_batch_unconstrained` reaches `0.994886` with `70/70` live ML calls.
 
-## Playwright E2E and recovery evidence
+## Resilience, Concurrency & Sustained Load Evidence
 
-The Playwright test passed in 47.2 seconds (45.175 s test execution) with one Chromium worker against an isolated official simulator instance:
+Full details recorded in [test-report.md](test-report.md):
+- **Resilience Matrix (`17/17` PASS, [resilience_matrix.json](evidence/resilience_matrix.json)):** All 6 domain events, combined crisis, all 5 simulator faults (`4000ms` latency timeout `503`, `unavailable`, `error_rate`, strict `stale_data` write block, forced `stream_disconnect` SSE reconnect), ML stop/restart, 6-way concurrent plan submit (`10` allocs) + tick-37 replay (`10` allocs) + restart replay + reset `409` on plan & intent, `RUNNING` `age_ticks=0` provenance, security headers, and Prometheus `/metrics` (`10,306 B`).
+- **Load & Sustained Matrix (`0` errors across all 8 scenarios, [benchmark_matrix.json](evidence/benchmark_matrix.json)):**
+  - Cached planning: `107.5 req/s` (`c=2`, `p95 17.10 ms`), `269.6 req/s` (`c=10`, `p95 40.09 ms`), `244.74 req/s` (`c=25`, `p95 117.87 ms`).
+  - Sustained planning (`c=10`, `120.39 s`): `106.37 req/s` (`12,806` reqs, `p50 53.34 ms`, `p95 266.15 ms`, `0` errors).
+  - Uncached OR-Tools (`c=2`): `2.03 req/s` (`p95 1,173.85 ms`); Live `CHRONOS2` (`12/12`): `p50 976.77 ms` / `p95 1,029.86 ms`.
+  - `RUNNING` simulator (`c=8`): `11.24 req/s` (`age_ticks_max=0` across `50` provenance samples); Plan contention (`c=4`): `35/35` HTTP `200`, `10` total simulator allocations; Prometheus target `up`.
 
-- **Forecast, anomaly detection, and crisis adaptation:** Seeded 42 ticks of real demand, disrupted the leading `route-gazipur-tongi`, and verified at tick 43 that `System health and observability` showed `SYSTEM OK`, `Anomalies and incoming supply` flagged `ROUTE DISRUPTED`, and the disrupted route dropped out of recommendations.
-- **Approval, rationale, and delivery tracking:** Operator inspected signals/constraints and approved 7,000 L of diesel from Patiya to Karnaphuli (`route-patiya-karnaphuli`, intent `f3280be2-3a88-4691-9915-c577a98a7466`). Simulator allocation `#1` progressed through `PENDING`, `IN_TRANSIT`, and `ARRIVED` at tick 45.
-- **Fault injection and recovery:** Injecting `stale_data` caused `/api/snapshot`, `/api/planning`, and `/api/health` to return HTTP `503` while `/api/approvals` returned `200` with `simulator_error` and `/api/metrics` stayed `200`. Inventory, the last validated timestamp (`Stale · last validated at ...`), and `#1 · ARRIVED` stayed visible while approval buttons were disabled. After `/admin/faults/clear`, the UI returned to `Updated at ...` and re-enabled approvals with exactly 1 simulator allocation.
-
-- [Stale-data screenshot](evidence/stale-dashboard.png)
-- [Health, approval, failure and recovery log excerpts](evidence/operator-log-excerpts.txt)
-
-## Reproduction commands
-
-Run these after installing Node.js 24 and starting Docker. On this Windows host the test used installed Chrome. On other hosts, install Chromium with the Playwright command in the [README](../README.md).
+## Reproduction Commands
 
 ```powershell
 npm ci --prefix frontend --dry-run
 npm run build --prefix frontend
 $env:BUP_CHROMIUM_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 node scripts/verify.mjs e2e
-node scripts/verify.mjs benchmark
-node scripts/verify.mjs forecast-policy
 node scripts/verify.mjs reorder-policy
+node scripts/verify.mjs forecast-policy
+python -u scripts/verify_ml_lifecycle.py
+python -u scripts/run-resilience-matrix.py
+python -u scripts/eval_policies.py
+python -u scripts/benchmark_matrix.py --sustained-seconds 120
+python -u scripts/test_live_scenarios.py
+node scripts/verify_live_ui.mjs
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -no-color .github/workflows/ci.yml .github/workflows/release.yml
 ```
-
-To smoke-test tagged release images locally:
-
-```powershell
-docker build --tag bup-local-release-backend:v0.0.0-local backend
-docker build --tag bup-local-release-dashboard:v0.0.0-local frontend
-$env:BUP_IMAGE_PREFIX = 'bup-local-release'
-$env:BUP_RELEASE_TAG = 'v0.0.0-local'
-$env:BUP_RELEASE_PULL = 'never'
-node scripts/verify.mjs release
-```
-
-Each verification run starts and stops its own Compose project, runs backend compilation, backend unit/integration tests, and OpenAPI contract equality checks, and records container health and service logs under `artifacts/`.
-
-## Decision preview load test
-
-Each run used a fresh official simulator paused at tick 42 with seed 12345 and three warm-up requests. Closed-loop clients called `GET /api/planning?history_ticks=8&horizon_ticks=96` through the dashboard proxy for 15 seconds. Tick-verified singleflight coalescing and SSE cache invalidation eliminate upstream simulator saturation while preserving immediate tick and stale-fault responsiveness.
-
-| Clients | Elapsed | Completed | Successful requests/s | p50 / p95 / p99 | Errors |
-| ---: | ---: | ---: | ---: | --- | ---: |
-| 2 | 15.005 s | 1,235 | 82.308 | 20.304 / 33.901 / 145.726 ms | 0 of 1,235 |
-| 8 | 15.005 s | 4,266 | 284.315 | 25.195 / 39.193 / 155.468 ms | 0 of 4,266 |
-| 10 | 15.014 s | 4,740 | 315.701 | 27.295 / 48.541 / 161.589 ms | 0 of 4,740 |
-
-All three runs confirmed zero postflight probe errors, fixed tick `42`, and an empty allocation ledger.
-
-| Service | Peak sampled CPU at 2 / 8 / 10 clients | Peak sampled memory at 2 / 8 / 10 clients |
-| --- | --- | --- |
-| Simulator | 48.64% / 46.81% / 75.46% | 61.11 / 61.21 / 61.07 MiB |
-| Snapshot API | 94.46% / 146.15% / 165.25% | 56.71 / 58.81 / 47.09 MiB |
-| Dashboard | 12.53% / 27.79% / 29.78% | 12.86 / 13.96 / 13.27 MiB |
-
-CPU percentages are Docker readings and can exceed 100% across multiple cores. These are peak values among five samples per run.
-
-- [2-client measurement](evidence/planning-benchmark-2.json)
-- [8-client measurement](evidence/planning-benchmark-8.json)
-- [10-client measurement](evidence/planning-benchmark-10.json)
-
-```powershell
-$env:BUP_BENCH_CONCURRENCY = '2'
-node scripts/verify.mjs benchmark
-$env:BUP_BENCH_CONCURRENCY = '8'
-node scripts/verify.mjs benchmark
-$env:BUP_BENCH_CONCURRENCY = '10'
-node scripts/verify.mjs benchmark
-```
-
-## Allocation policy comparison
-
-Both policies ran in fresh official simulators with seed 12345, 42 ticks of demand history, and the same Mirpur `1.8x` demand spike and Gazipur–Mirpur route disruption. Both had one shipment opportunity every six ticks and were measured through tick 150. The upgraded forecast policy uses spike- and hour-of-day-aware demand projection plus urgency-discounted ranking (`tau = 16` ticks).
-
-| Policy | Unmet demand | Service level | Allocated liters | Failed allocations |
-| --- | ---: | ---: | ---: | ---: |
-| Forecast & urgency optimizer | 1,577.969 L | 98.920% | 104,489.487 L | 0 |
-| Reorder baseline | 0 L | 100% | 95,072.886 L | 0 |
-
-Urgency weighting and event/seasonality projection reduced forecast-policy unmet demand by 67% compared with the initial flat-mean greedy ranker (`4,783.743 L` → `1,577.969 L`), while the reorder baseline still achieved `0 L` unmet on this fixed 6-tick cadence and seed.
-
-- [Forecast policy decisions and simulator metrics](evidence/forecast-policy.json)
-- [Reorder policy decisions and simulator metrics](evidence/reorder-policy.json)
-
-## CI/CD status and remaining gaps
-
-- **Verified locally and from clean clone:** [ci.yml](../.github/workflows/ci.yml) and [release.yml](../.github/workflows/release.yml) passed `actionlint` with zero issues; a fresh shallow clone of `https://github.com/arijit547/BUP-check.git` passed `npm ci --prefix frontend`, `npm run build --prefix frontend`, backend `compileall` and `unittest` (`3` tests), OpenAPI parity, and `node scripts/verify.mjs e2e` (`bup-m5-e2e-867b642b`, `47.5 s`); and `node scripts/verify.mjs release` verified [compose.release.yaml](../compose.release.yaml) against locally built versioned images.
-- **Pushed to GitHub / pending external confirmation:** Branch `main` and tag `v1.0.0` are pushed to `https://github.com/arijit547/BUP-check` to trigger `ci.yml` and `release.yml`. Confirming the hosted GitHub Actions run status, pulling published GHCR `ghcr.io/arijit547/bup-check-*:v1.0.0` images after workflow completion, and a live presenter rehearsal of [demo-runbook.md](demo-runbook.md) remain external checks.

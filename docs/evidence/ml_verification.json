@@ -1,0 +1,59 @@
+{
+  "checks": {
+    "core_without_ml": {
+      "passed": true,
+      "default_source": "SEASONAL",
+      "fallback_reason": "ML service disabled or unconfigured; using seasonal/rule mode."
+    },
+    "separate_model_readiness": {
+      "passed": true,
+      "http_status": 503,
+      "payload": {
+        "status": "partial",
+        "chronos2_ready": false,
+        "isolation_forest_ready": true,
+        "chronos2": {
+          "status": "missing",
+          "model_id": "amazon/chronos-2",
+          "revision": "unknown",
+          "load_time_ms": null,
+          "last_inference_ms": null,
+          "last_inference_at": null,
+          "error": "Chronos-2 local model files not found at /models/chronos-2"
+        },
+        "isolation_forest": {
+          "status": "loaded",
+          "version": "iforest-bup-v1.0.0",
+          "error": null
+        }
+      }
+    },
+    "prepare_and_offline_smoke": {
+      "passed": true,
+      "output_tail": [
+        "    \"fp\": 21,",
+        "    \"fn\": 0,",
+        "    \"tn\": 2079,",
+        "    \"precision\": 0.8372,",
+        "    \"recall\": 1.0,",
+        "    \"f1\": 0.9114,",
+        "    \"fpr\": 0.01,",
+        "    \"detection_delay_ticks\": 0",
+        "  }",
+        "}",
+        "+ docker run --rm --network=none -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 -v C:\\Users\\DFIT\\Desktop\\BUP FINAL\\ml-service\\weights:/models:ro -v C:\\Users\\DFIT\\Desktop\\BUP FINAL\\ml-service\\artifacts:/app/artifacts:ro -v C:\\Users\\DFIT\\Desktop\\BUP FINAL\\ml-service\\model-manifest.json:/app/model-manifest.json:ro bupfinal-ml-service python -c from chronos_adapter import ChronosAdapter; from anomaly_model import IsolationForestDetector; c=ChronosAdapter('/models/chronos-2','/app/model-manifest.json'); c.load(); a=IsolationForestDetector('/app/artifacts/isolation_forest.joblib','/app/model-manifest.json'); a.load(); assert c.status=='loaded' and a.status=='loaded', (c.status, c.error, a.status, a.error); print('OFFLINE_PREP_OK', c.model_id, c.model_revision, c.load_time_ms, a.model_version)",
+        "OFFLINE_PREP_OK amazon/chronos-2 29ec3766d36d6f73f0696f85560a422f50e8498c 10677.35 iforest-bup-v1.0.0"
+      ]
+    },
+    "live_ml_inference_and_recovery": {
+      "passed": true,
+      "chronos2_source": "CHRONOS2",
+      "chronos2_model_version": "amazon/chronos-2@29ec3766d36d",
+      "chronos2_latency_ms": 2817.38,
+      "anomaly_model_version": "iforest-bup-v1.0.0",
+      "hybrid_or_ml_incidents": 3,
+      "stopped_ml_fallback_source": "SEASONAL",
+      "recovered_chronos2_source": "CHRONOS2"
+    }
+  }
+}

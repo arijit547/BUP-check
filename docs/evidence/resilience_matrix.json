@@ -1,0 +1,258 @@
+{
+  "total": 17,
+  "passed": 17,
+  "failed": 0,
+  "results": [
+    {
+      "test": "domain_event_demand_spike",
+      "category": "domain_event",
+      "passed": true,
+      "detected_categories": [
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE"
+      ]
+    },
+    {
+      "test": "domain_event_route_disruption",
+      "category": "domain_event",
+      "passed": true,
+      "detected_categories": [
+        "ROUTE_DISRUPTED",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE"
+      ],
+      "recommended_routes": [
+        "route-gazipur-karnaphuli",
+        "route-gazipur-karnaphuli",
+        "route-gazipur-karnaphuli",
+        "route-patiya-karnaphuli",
+        "route-patiya-mirpur",
+        "route-patiya-coxsbazar",
+        "route-gazipur-tongi",
+        "route-patiya-mirpur",
+        "route-patiya-coxsbazar",
+        "route-patiya-mirpur",
+        "route-patiya-coxsbazar"
+      ]
+    },
+    {
+      "test": "domain_event_station_outage",
+      "category": "domain_event",
+      "passed": true,
+      "detected_categories": [
+        "STATION_OUTAGE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE"
+      ],
+      "tongi_outage_series": 3
+    },
+    {
+      "test": "domain_event_depot_constraint",
+      "category": "domain_event",
+      "passed": true,
+      "detected_categories": [
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEPOT_CONSTRAINED",
+        "DEMAND_SPIKE"
+      ]
+    },
+    {
+      "test": "domain_event_shipment_delay",
+      "category": "domain_event",
+      "passed": true,
+      "detected_categories": [
+        "SUPPLY_DELAYED",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "SUPPLY_DELAYED",
+        "SUPPLY_DELAYED",
+        "SUPPLY_DELAYED"
+      ]
+    },
+    {
+      "test": "domain_event_supply_shortfall",
+      "category": "domain_event",
+      "passed": true,
+      "detected_categories": [
+        "SUPPLY_SHORTFALL",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE",
+        "DEMAND_SPIKE"
+      ]
+    },
+    {
+      "test": "domain_event_combined_crisis",
+      "category": "domain_event",
+      "passed": true,
+      "categories": [
+        "DEMAND_SPIKE",
+        "DEPOT_CONSTRAINED",
+        "ROUTE_DISRUPTED",
+        "STATION_OUTAGE"
+      ],
+      "recommendations_count": 8
+    },
+    {
+      "test": "fault_latency_moderate",
+      "category": "api_fault",
+      "passed": true,
+      "fault_phase": {
+        "http_status": 200
+      },
+      "recovery_phase": {
+        "recovered_status": 200
+      }
+    },
+    {
+      "test": "fault_latency_timeout_and_recovery",
+      "category": "api_fault",
+      "passed": true,
+      "fault_phase": {
+        "timeout_status": 503
+      },
+      "recovery_phase": {
+        "recovered_status": 200
+      }
+    },
+    {
+      "test": "fault_unavailable_and_recovery",
+      "category": "api_fault",
+      "passed": true,
+      "fault_phase": {
+        "unavailable_status": 503,
+        "health_degraded_status": 503
+      },
+      "recovery_phase": {
+        "snapshot_status": 200,
+        "health_status": 200
+      }
+    },
+    {
+      "test": "fault_error_rate_and_recovery",
+      "category": "api_fault",
+      "passed": true,
+      "fault_phase": {
+        "fault_status": 503
+      },
+      "recovery_phase": {
+        "recovered_status": 200
+      }
+    },
+    {
+      "test": "fault_stale_data_and_recovery",
+      "category": "api_fault",
+      "passed": true,
+      "fault_phase": {
+        "snapshot_status": 503,
+        "planning_status": 503,
+        "health_status": 503,
+        "plan_write_status": 503,
+        "single_write_status": 200,
+        "allocs_before": 0,
+        "allocs_during_stale": 0
+      },
+      "recovery_phase": {
+        "snapshot_status": 200,
+        "planning_status": 200,
+        "health_status": 200,
+        "recovered_write_status": 200,
+        "degraded_flag_after_clear": false
+      }
+    },
+    {
+      "test": "fault_stream_disconnect_sse",
+      "category": "api_fault",
+      "passed": true,
+      "fault_phase": {
+        "blocked_with_503": true,
+        "reconnect_attempts_during_fault": 1,
+        "rest_fallback_snapshot_status": 200
+      },
+      "recovery_phase": {
+        "reconnected": true,
+        "reconnects_after_clear": 1,
+        "events_before_step": 0,
+        "events_after_step": 1,
+        "new_event_received": true
+      }
+    },
+    {
+      "test": "ml_service_stop_degrade_and_restart",
+      "category": "ml_resilience",
+      "passed": true,
+      "fault_phase": {
+        "down_ml_status": "degraded",
+        "fallback_source": "SEASONAL",
+        "degraded": true
+      },
+      "recovery_phase": {
+        "recovered_ml_status": "ok",
+        "recovered_source": "CHRONOS2",
+        "degraded": false
+      }
+    },
+    {
+      "test": "concurrency_restart_cancel_and_reset_isolation",
+      "category": "state_integrity",
+      "passed": true,
+      "plan_shipments_expected": 10,
+      "plan_allocs_concurrent": 10,
+      "plan_allocs_after_tick_37_replay": 10,
+      "concurrent_unique_alloc_ids": 1,
+      "sim_allocs_count": 1,
+      "conflict_status": 409,
+      "replay_after_restart_state": "CONFIRMED",
+      "cancel_status": "CANCELLED",
+      "generation_changed": true,
+      "old_plan_reset_status": 409,
+      "old_intent_reset_status": 409
+    },
+    {
+      "test": "security_headers_and_prometheus_metrics",
+      "category": "observability_security",
+      "passed": true,
+      "headers_present": true,
+      "prometheus_bytes": 10305
+    },
+    {
+      "test": "running_mode_provenance_and_freshness",
+      "category": "observability_security",
+      "passed": true,
+      "running_samples": 12,
+      "cached_fallback_observed": false,
+      "last_running_sample": [
+        200,
+        "37",
+        "37",
+        "false",
+        "false",
+        "2026-11-26T17:10:46.006258+00:00"
+      ],
+      "paused_recovery_cached": "false"
+    }
+  ]
+}

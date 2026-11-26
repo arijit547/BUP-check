@@ -18,8 +18,24 @@ services:
     environment:
       SIMULATOR_BASE_URL: http://simulator-api:8000
       APPROVAL_DB: /data/approvals.sqlite3
+      ML_SERVICE_URL: ${ML_SERVICE_URL:-}
+      MODEL_MANIFEST_PATH: /meta/model-manifest.json
+      EVAL_ARTIFACTS_DIR: /eval
+      EVIDENCE_DIR: /evidence
+      PLANNING_CACHE_TTL_SECONDS: ${PLANNING_CACHE_TTL_SECONDS:-2.0}
+      SIMULATOR_TIMEOUT_SECONDS: ${SIMULATOR_TIMEOUT_SECONDS:-3.0}
+      ML_FORECAST_TIMEOUT_SECONDS: ${ML_FORECAST_TIMEOUT_SECONDS:-8.0}
+      OPERATOR_AUTH_MODE: ${OPERATOR_AUTH_MODE:-local_open}
+      OPERATOR_USERNAME: ${OPERATOR_USERNAME:-operator}
+      OPERATOR_PASSWORD_HASH: ${OPERATOR_PASSWORD_HASH:-}
+      OPERATOR_TOKEN_SHA256: ${OPERATOR_TOKEN_SHA256:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     volumes:
       - approvals:/data
+      - ./ml-service/model-manifest.json:/meta/model-manifest.json:ro
+      - ./artifacts/evaluation:/eval:ro
+      - ./docs/evidence:/evidence:ro
     depends_on:
       simulator-api:
         condition: service_healthy
@@ -43,6 +59,37 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  ml-service:
+    profiles: ["ml"]
+    build: ./ml-service
+    environment:
+      CHRONOS_MODEL_DIR: /models/chronos-2
+      IFOREST_ARTIFACT_PATH: /app/artifacts/isolation_forest.joblib
+      MODEL_MANIFEST_PATH: /app/model-manifest.json
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - ./ml-service/weights:/models:ro
+      - ./ml-service/artifacts:/app/artifacts:ro
+    expose:
+      - "8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8002/health/live', timeout=2).close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:v3.2.1
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      snapshot-api:
+        condition: service_healthy
 
 volumes:
   approvals:

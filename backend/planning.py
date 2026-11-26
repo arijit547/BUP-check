@@ -1,499 +1,97 @@
 from collections import defaultdict
-from datetime import timedelta
-import math
-from statistics import mean, pstdev
-from typing import Any, Literal
+from datetime import UTC, datetime, timedelta
+from statistics import mean
+from typing import Any
 
-from pydantic import Field
+from intelligence.anomaly import detect_rule_anomalies, merge_ml_anomalies
+from intelligence.collector import hour_factor, index_observations_by_series, regularized_series
+from intelligence.contracts import (
+    FUELS,
+    Allocation,
+    Anomaly,
+    ConfidenceLevel,
+    DemandObservation,
+    Forecast,
+    ForecastPoint,
+    ForecastRisk,
+    ForecastSeries,
+    ForecastSource,
+    ForecastsResponse,
+    Fuel,
+    PlanPreviewSummary,
+    PlanningReport,
+    PolicyMode,
+    Recommendation,
+    Region,
+    ShortageDetail,
+    ShortagesResponse,
+    SimulatorEvent,
+    SimulatorMetrics,
+    StationDetail,
+    SupplyArrival,
+)
+from intelligence.fallback import fallback_demand_rate
+from intelligence.features import build_causal_features, spike_multiplier_at
+from intelligence.forecasting import build_demand_series, build_seasonal_forecast_points, confidence_for_window
+from intelligence.optimizer import optimize_allocations, simulate_joint_impact, urgency_score, validate_plan_independently
+from intelligence.shortage import classify_risk, compute_safety_stock_target, project, project_detailed, stockout_probability
+from schemas import Snapshot
 
-from schemas import FuelVolumes, Identifier, Liters, Snapshot, SnapshotModel
-
-Fuel = Literal["DIESEL", "PETROL", "OCTANE"]
-FUELS: tuple[Fuel, ...] = ("DIESEL", "PETROL", "OCTANE")
-RiskLevel = Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-ForecastRisk = Literal["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"]
-ConfidenceLevel = Literal["HIGH", "MEDIUM", "LOW"]
-
-# Documented daily demand profiles (liters/day) from simulator guide §8.5 for tick-0 fallback.
-PROFILE_DAILY_LITERS: dict[str, dict[Fuel, float]] = {
-    "urban_high": {"DIESEL": 8500.0, "PETROL": 10500.0, "OCTANE": 5600.0},
-    "industrial": {"DIESEL": 14000.0, "PETROL": 4500.0, "OCTANE": 2200.0},
-    "highway": {"DIESEL": 10500.0, "PETROL": 11000.0, "OCTANE": 6200.0},
-    "regional": {"DIESEL": 7200.0, "PETROL": 7600.0, "OCTANE": 3600.0},
-}
-
-
-class DemandObservation(SnapshotModel):
-    station_id: Identifier
-    fuel_type: Fuel
-    tick: int = Field(ge=0)
-    demand_liters: Liters
-
-
-class Allocation(SnapshotModel):
-    source_depot_id: Identifier
-    destination_station_id: Identifier
-    route_id: Identifier | None = None
-    fuel_type: Fuel
-    quantity: Liters
-    created_tick: int = Field(ge=0)
-    expected_arrival_tick: int | None = Field(default=None, ge=0)
-    status: Literal["PENDING", "IN_TRANSIT", "ARRIVED", "FAILED", "CANCELLED"]
-
-
-class StationDetail(SnapshotModel):
-    id: Identifier
-    region_id: Identifier
-    demand_profile: str = "urban_high"
-    demand_multiplier: float = Field(default=1.0, gt=0)
-
-
-class Region(SnapshotModel):
-    id: Identifier
-    name: str
-    demand_factor: float = Field(gt=0)
-
-
-class SupplyArrival(SnapshotModel):
-    id: Identifier
-    depot_id: Identifier
-    fuel_type: Fuel
-    quantity: Liters
-    planned_tick: int = Field(ge=0)
-    actual_tick: int | None = Field(default=None, ge=0)
-    status: Literal["SCHEDULED", "DELAYED", "ARRIVED"]
-
-
-class SimulatorEvent(SnapshotModel):
-    id: int
-    type: str
-    start_tick: int = Field(ge=0)
-    end_tick: int = Field(ge=0)
-    status: Literal["SCHEDULED", "ACTIVE", "RESOLVED"]
-    parameters: dict[str, Any] = Field(default_factory=dict)
+__all__ = [
+    "Allocation",
+    "Anomaly",
+    "DemandObservation",
+    "Forecast",
+    "ForecastPoint",
+    "ForecastRisk",
+    "ForecastSeries",
+    "ForecastsResponse",
+    "Fuel",
+    "FUELS",
+    "PlanPreviewSummary",
+    "PlanningReport",
+    "Recommendation",
+    "Region",
+    "ShortageDetail",
+    "ShortagesResponse",
+    "SimulatorEvent",
+    "SimulatorMetrics",
+    "StationDetail",
+    "SupplyArrival",
+    "build_demand_series",
+    "build_report",
+    "classify_risk",
+    "confidence_for_window",
+    "fallback_demand_rate",
+    "hour_factor",
+    "project",
+    "spike_multiplier_at",
+    "stockout_probability",
+    "urgency_score",
+]
 
 
-class SimulatorMetrics(SnapshotModel):
-    served_demand_liters: Liters
-    unmet_demand_liters: Liters
-    service_level: float = Field(ge=0)
-    allocation_liters: Liters
-    allocation_failures: int = Field(ge=0)
-
-
-class Anomaly(SnapshotModel):
-    id: str
-    category: Literal[
-        "DEMAND_SPIKE",
-        "DEMAND_DROP",
-        "STOCKOUT_RISK",
-        "ROUTE_DISRUPTED",
-        "STATION_OUTAGE",
-        "DEPOT_CONSTRAINED",
-        "DISPATCH_BOTTLENECK",
-        "SUPPLY_DELAYED",
-    ]
-    severity: Literal["CRITICAL", "WARNING"]
-    entity_type: Literal["station", "depot", "route", "supply"]
-    entity_id: Identifier
-    fuel_type: Fuel | None = None
-    summary: str
-    observed_value: float | None = None
-    baseline_value: float | None = None
-    z_score: float | None = None
-
-
-class Forecast(SnapshotModel):
-    station_id: Identifier
-    station_name: str
-    fuel_type: Fuel
-    observations: int
-    first_history_tick: int | None
-    last_history_tick: int | None
-    demand_liters_per_tick: Liters | None
-    stockout_tick: int | None
-    unmet_liters: Liters | None
-    projected_demand_liters_per_tick: Liters | None = None
-    fallback_demand_liters_per_tick: Liters | None = None
-    demand_std_liters: Liters | None = None
-    confidence: ConfidenceLevel = "LOW"
-    confidence_score: float = 0.0
-    shortage_risk: ForecastRisk = "UNKNOWN"
-    stockout_probability: float = 0.0
-    fallback_used: bool = False
-
-
-class Recommendation(SnapshotModel):
-    route_id: Identifier
-    source_depot_id: Identifier
-    source_depot_name: str
-    destination_station_id: Identifier
-    destination_station_name: str
-    fuel_type: Fuel
-    quantity_liters: Liters
-    arrival_tick: int
-    eta_ticks: int
-    eta_minutes: int
-    unmet_before_liters: Liters
-    unmet_after_liters: Liters
-    unmet_avoided_liters: Liters
-    policy_mode: Literal["FORECAST_OPTIMIZER", "REORDER_FALLBACK"] = "FORECAST_OPTIMIZER"
-    priority_score: float = 0.0
-    stockout_tick_before: int | None = None
-    stockout_tick_after: int | None = None
-    risk_before: RiskLevel = "MEDIUM"
-    risk_after: RiskLevel = "LOW"
-    confidence: ConfidenceLevel = "MEDIUM"
-    rationale: str = ""
-    signals: list[str] = Field(default_factory=list)
-    constraints: list[str] = Field(default_factory=list)
-    alternative_routes: list[str] = Field(default_factory=list)
-
-
-class PlanningReport(SnapshotModel):
-    tick: int
-    history_ticks: int
-    horizon_ticks: int
-    forecasts: list[Forecast]
-    recommendations: list[Recommendation]
-    policy_mode: Literal["FORECAST_OPTIMIZER", "REORDER_FALLBACK"] = "FORECAST_OPTIMIZER"
-    fallback_active: bool = False
-    anomalies: list[Anomaly] = Field(default_factory=list)
-    events: list[SimulatorEvent] = Field(default_factory=list)
-    supply_arrivals: list[SupplyArrival] = Field(default_factory=list)
-    simulator_metrics: SimulatorMetrics | None = None
-
-
-def hour_factor(profile: str, hour: int) -> float:
-    """Return documented simulator hour-of-day factor (§8.6)."""
-    if profile == "industrial":
-        return 1.55 if 6 <= hour <= 17 else 0.45
-    if profile == "highway":
-        return 1.35 if (6 <= hour <= 9 or 16 <= hour <= 20) else 0.75
-    if profile == "urban_high":
-        return 1.45 if (7 <= hour <= 9 or 16 <= hour <= 20) else 0.70
-    if profile == "regional":
-        return 1.25 if 7 <= hour <= 20 else 0.65
-    return 1.0
-
-
-def spike_multiplier_at(
-    events: list[SimulatorEvent],
-    station_id: str,
-    region_id: str,
-    target_tick: int,
-) -> float:
-    """Return combined demand_spike multiplier active at target_tick."""
-    multiplier = 1.0
-    for event in events:
-        if event.type != "demand_spike":
-            continue
-        if not (event.start_tick <= target_tick < event.end_tick):
-            continue
-        params = event.parameters or {}
-        station_ids = params.get("station_ids") or []
-        region_ids = params.get("region_ids") or []
-        applies_station = not station_ids or station_id in station_ids
-        applies_region = not region_ids or region_id in region_ids
-        if applies_station and applies_region:
-            factor = params.get("multiplier", 1.5)
-            if isinstance(factor, (int, float)) and factor > 0:
-                multiplier *= float(factor)
-    return multiplier
-
-
-def project(
-    stock: float,
-    capacity: float,
-    demand: float | list[float],
-    arrivals: list[float],
-    station_open: bool,
-) -> tuple[int | None, list[float], list[float]]:
-    """Return the first depleted offset, unmet demand, and room before demand."""
-    demands = [demand] * len(arrivals) if isinstance(demand, (int, float)) else demand
-    depleted = None
-    unmet: list[float] = []
-    room: list[float] = []
-    for offset, arriving in enumerate(arrivals):
-        tick_demand = demands[offset]
-        stock += min(arriving, max(0.0, capacity - stock))
-        room.append(max(0.0, capacity - stock))
-        served = min(stock, tick_demand) if station_open else 0.0
-        unmet.append(tick_demand - served)
-        stock -= served
-        if stock == 0 and tick_demand > 0 and depleted is None:
-            depleted = offset
-    return depleted, unmet, room
-
-
-def classify_risk(
-    stock: float,
-    capacity: float,
-    depleted_offset: int | None,
-    unmet_total: float,
-) -> RiskLevel:
-    ratio = stock / capacity if capacity > 0 else 1.0
-    if (depleted_offset is not None and depleted_offset <= 12) or ratio < 0.20:
-        return "CRITICAL"
-    if (depleted_offset is not None and depleted_offset <= 32) or ratio < 0.35:
-        return "HIGH"
-    if depleted_offset is not None or unmet_total > 0 or ratio < 0.55:
-        return "MEDIUM"
-    return "LOW"
-
-
-def stockout_probability(
-    stock: float,
-    demand_series: list[float],
-    demand_std: float,
-    arrivals: list[float],
-    depleted_offset: int | None,
-    station_open: bool,
-) -> float:
-    if not station_open:
-        return 0.0
-    total_arrivals = sum(arrivals)
-    expected_demand = sum(demand_series)
-    horizon_std = max(1e-6, demand_std * math.sqrt(max(1, len(demand_series))))
-    net_buffer = stock + total_arrivals - expected_demand
-    z = net_buffer / horizon_std
-    prob = 1.0 / (1.0 + math.exp(max(-20.0, min(20.0, z))))
-    if depleted_offset is not None:
-        prob = max(prob, 0.75 if depleted_offset <= 16 else 0.55)
-    return round(max(0.0, min(1.0, prob)), 3)
-
-
-def confidence_for_window(
-    observations: int,
-    history_ticks: int,
-    values: list[float],
-) -> tuple[ConfidenceLevel, float, float]:
-    if not values:
-        return "LOW", 0.2, 0.0
-    std = pstdev(values) if len(values) > 1 else 0.0
-    avg = mean(values)
-    cv = std / avg if avg > 0 else 0.0
-    coverage = min(1.0, observations / max(1, history_ticks))
-    score = round(max(0.1, min(0.99, coverage * (1.0 - min(0.6, cv)))), 3)
-    if observations >= history_ticks and score >= 0.72:
-        return "HIGH", score, round(std, 3)
-    if observations >= max(2, history_ticks // 2) and score >= 0.45:
-        return "MEDIUM", score, round(std, 3)
-    return "LOW", score, round(std, 3)
-
-
-def fallback_demand_rate(
-    samples: list[tuple[int, float]],
-    station_detail: StationDetail | None,
-    region_factor: float,
-    fuel: Fuel,
-    sim_hour: int,
-    tick_minutes: int,
-) -> float:
-    if samples:
-        base = mean(liters for _, liters in samples)
-        multiplier = station_detail.demand_multiplier if station_detail else 1.0
-        return round(base * max(1.0, multiplier), 3)
-    profile = station_detail.demand_profile if station_detail else "urban_high"
-    daily = PROFILE_DAILY_LITERS.get(profile, PROFILE_DAILY_LITERS["urban_high"])[fuel]
-    ticks_per_day = max(1.0, (24 * 60) / max(1, tick_minutes))
-    multiplier = station_detail.demand_multiplier if station_detail else 1.0
-    rate = (daily / ticks_per_day) * region_factor * hour_factor(profile, sim_hour) * multiplier
-    return round(rate, 3)
-
-
-def build_demand_series(
-    samples: list[tuple[int, float]],
-    tick: int,
-    horizon_ticks: int,
-    tick_minutes: int,
-    sim_time: Any,
-    station_id: str,
-    region_id: str,
-    station_detail: StationDetail | None,
-    events: list[SimulatorEvent],
-) -> tuple[float, list[float]]:
-    """Return raw rolling mean and spike/seasonality-adjusted horizon demand series."""
-    rolling_mean = mean(liters for _, liters in samples)
-    profile = station_detail.demand_profile if station_detail else "urban_high"
-
-    # Normalize each historical tick by its hour factor and active spike multiplier.
-    normalized: list[float] = []
-    for sample_tick, liters in samples:
-        sample_time = sim_time - timedelta(minutes=(tick - sample_tick) * tick_minutes)
-        h_factor = hour_factor(profile, sample_time.hour)
-        s_factor = spike_multiplier_at(events, station_id, region_id, sample_tick)
-        normalized.append(liters / max(0.01, h_factor * s_factor))
-
-    base_rate = mean(normalized) if normalized else rolling_mean
-    current_mult = station_detail.demand_multiplier if station_detail else 1.0
-
-    series: list[float] = []
-    for offset in range(horizon_ticks):
-        future_tick = tick + offset
-        future_time = sim_time + timedelta(minutes=offset * tick_minutes)
-        h_factor = hour_factor(profile, future_time.hour)
-        s_factor = spike_multiplier_at(events, station_id, region_id, future_tick)
-        if offset == 0 and s_factor == 1.0 and current_mult != 1.0:
-            s_factor = current_mult
-        series.append(round(base_rate * h_factor * s_factor, 3))
-    return rolling_mean, series
-
-
-def detect_anomalies(
+def _extract_incoming_and_dispatch(
+    *,
     snapshot: Snapshot,
-    observed: dict[tuple[str, Fuel], dict[int, float]],
-    station_details: dict[str, StationDetail],
-    forecasts: list[Forecast],
-    dispatch_used: dict[str, float],
-    supply_arrivals: list[SupplyArrival],
-    events: list[SimulatorEvent],
-) -> list[Anomaly]:
-    anomalies: list[Anomaly] = []
+    allocations: list[Allocation],
+    horizon_ticks: int,
+) -> tuple[dict[tuple[str, Fuel], list[float]], dict[str, float]]:
     tick = snapshot.simulation.tick
-    station_names = {station.id: station.name for station in snapshot.stations}
-    depot_names = {depot.id: depot.name for depot in snapshot.depots}
-
-    for station in snapshot.stations:
-        if station.status == "OUTAGE":
-            anomalies.append(Anomaly(
-                id=f"outage-{station.id}",
-                category="STATION_OUTAGE",
-                severity="CRITICAL",
-                entity_type="station",
-                entity_id=station.id,
-                summary=f"{station.name} is in OUTAGE; demand is not being served.",
-            ))
-        detail = station_details.get(station.id)
-        for fuel in FUELS:
-            samples = sorted(observed[station.id, fuel].items())
-            if len(samples) >= 4:
-                latest_tick, latest = samples[-1]
-                prior = [val for _, val in samples[:-1]]
-                base = mean(prior)
-                std = pstdev(prior) if len(prior) > 1 else 0.0
-                z = (latest - base) / std if std > 1e-6 else None
-                ratio = latest / base if base > 0 else 1.0
-                mult = detail.demand_multiplier if detail else 1.0
-                if (latest_tick == tick - 1) and ((z is not None and z >= 2.0) or ratio >= 1.35 or mult >= 1.25):
-                    severity = "CRITICAL" if ((z is not None and z >= 2.8) or ratio >= 1.6 or mult >= 1.5) else "WARNING"
-                    anomalies.append(Anomaly(
-                        id=f"spike-{station.id}-{fuel}",
-                        category="DEMAND_SPIKE",
-                        severity=severity,
-                        entity_type="station",
-                        entity_id=station.id,
-                        fuel_type=fuel,
-                        summary=(
-                            f"{station.name} {fuel} demand spiked to {latest:.1f} L/tick "
-                            f"vs {base:.1f} L baseline (multiplier {mult:.2f}x)."
-                        ),
-                        observed_value=round(latest, 3),
-                        baseline_value=round(base, 3),
-                        z_score=round(z, 2) if z is not None else None,
-                    ))
-                elif (latest_tick == tick - 1) and ((z is not None and z <= -2.2) or ratio <= 0.45):
-                    anomalies.append(Anomaly(
-                        id=f"drop-{station.id}-{fuel}",
-                        category="DEMAND_DROP",
-                        severity="WARNING",
-                        entity_type="station",
-                        entity_id=station.id,
-                        fuel_type=fuel,
-                        summary=f"{station.name} {fuel} demand dropped sharply to {latest:.1f} L/tick vs {base:.1f} L.",
-                        observed_value=round(latest, 3),
-                        baseline_value=round(base, 3),
-                        z_score=round(z, 2) if z is not None else None,
-                    ))
-
-    for forecast in forecasts:
-        if forecast.shortage_risk in ("CRITICAL", "HIGH"):
-            eta_msg = (
-                f"projected stockout at tick {forecast.stockout_tick}"
-                if forecast.stockout_tick is not None
-                else "low inventory reserve"
-            )
-            anomalies.append(Anomaly(
-                id=f"risk-{forecast.station_id}-{forecast.fuel_type}",
-                category="STOCKOUT_RISK",
-                severity="CRITICAL" if forecast.shortage_risk == "CRITICAL" else "WARNING",
-                entity_type="station",
-                entity_id=forecast.station_id,
-                fuel_type=forecast.fuel_type,
-                summary=f"{forecast.station_name} {forecast.fuel_type}: {eta_msg} ({forecast.shortage_risk}).",
-                observed_value=forecast.unmet_liters,
-            ))
-
-    for route in snapshot.routes:
-        if route.status == "DISRUPTED":
-            dest_name = station_names.get(route.destination_station_id, route.destination_station_id)
-            anomalies.append(Anomaly(
-                id=f"route-{route.id}",
-                category="ROUTE_DISRUPTED",
-                severity="CRITICAL",
-                entity_type="route",
-                entity_id=route.id,
-                summary=f"{route.id} to {dest_name} is DISRUPTED; rerouting required.",
-            ))
-
-    for depot in snapshot.depots:
-        if depot.status == "CONSTRAINED":
-            anomalies.append(Anomaly(
-                id=f"depot-{depot.id}",
-                category="DEPOT_CONSTRAINED",
-                severity="WARNING",
-                entity_type="depot",
-                entity_id=depot.id,
-                summary=f"{depot.name} is CONSTRAINED; monitor dispatch limits and resupplies.",
-            ))
-        if depot.dispatch_capacity_per_tick > 0:
-            utilization = dispatch_used[depot.id] / depot.dispatch_capacity_per_tick
-            if utilization >= 0.75:
-                anomalies.append(Anomaly(
-                    id=f"dispatch-{depot.id}",
-                    category="DISPATCH_BOTTLENECK",
-                    severity="CRITICAL" if utilization >= 0.95 else "WARNING",
-                    entity_type="depot",
-                    entity_id=depot.id,
-                    summary=(
-                        f"{depot.name} dispatch capacity {utilization * 100:.0f}% utilized "
-                        f"({dispatch_used[depot.id]:.0f}/{depot.dispatch_capacity_per_tick:.0f} L)."
-                    ),
-                    observed_value=round(dispatch_used[depot.id], 3),
-                    baseline_value=depot.dispatch_capacity_per_tick,
-                ))
-
-    for arrival in supply_arrivals:
-        if arrival.status == "DELAYED":
-            depot_name = depot_names.get(arrival.depot_id, arrival.depot_id)
-            anomalies.append(Anomaly(
-                id=f"supply-{arrival.id}",
-                category="SUPPLY_DELAYED",
-                severity="WARNING",
-                entity_type="supply",
-                entity_id=arrival.id,
-                fuel_type=arrival.fuel_type,
-                summary=(
-                    f"Incoming {arrival.quantity:.0f} L {arrival.fuel_type} to {depot_name} "
-                    f"delayed (planned tick {arrival.planned_tick})."
-                ),
-                observed_value=float(arrival.planned_tick),
-            ))
-
-    # Deduplicate by id, critical first.
-    anomalies.sort(key=lambda item: (0 if item.severity == "CRITICAL" else 1, item.id))
-    return anomalies
-
-
-def urgency_score(unmet_before: list[float], unmet_after: list[float]) -> float:
-    """Discount future unmet demand avoided so imminent stockouts outrank distant ones."""
-    tau = 16.0
-    score = 0.0
-    for offset, (before_val, after_val) in enumerate(zip(unmet_before, unmet_after)):
-        avoided = max(0.0, before_val - after_val)
-        if avoided > 0:
-            score += avoided / (1.0 + offset / tau)
-    return round(score, 3)
+    routes_by_id = {route.id: route for route in snapshot.routes}
+    incoming: dict[tuple[str, Fuel], list[float]] = defaultdict(lambda: [0.0] * horizon_ticks)
+    dispatch_used: dict[str, float] = defaultdict(float)
+    for allocation in allocations:
+        if allocation.status in ("PENDING", "IN_TRANSIT") and allocation.created_tick == tick:
+            dispatch_used[allocation.source_depot_id] += allocation.quantity
+        eta = allocation.expected_arrival_tick
+        if allocation.status == "IN_TRANSIT" and eta is not None and tick <= eta < tick + horizon_ticks:
+            incoming[(allocation.destination_station_id, allocation.fuel_type)][eta - tick] += allocation.quantity
+        elif allocation.status == "PENDING" and allocation.route_id and allocation.route_id in routes_by_id:
+            pending_eta = routes_by_id[allocation.route_id].transit_ticks
+            if pending_eta < horizon_ticks:
+                incoming[(allocation.destination_station_id, allocation.fuel_type)][pending_eta] += allocation.quantity
+    return incoming, dispatch_used
 
 
 def build_report(
@@ -508,6 +106,14 @@ def build_report(
     supply_arrivals: list[SupplyArrival] | None = None,
     events: list[SimulatorEvent] | None = None,
     simulator_metrics: SimulatorMetrics | None = None,
+    generation_id: str = "default",
+    chronos_predictions: dict[tuple[str, Fuel], list[ForecastPoint]] | None = None,
+    chronos_model_version: str | None = None,
+    ml_anomaly_scores: list[dict[str, Any]] | None = None,
+    policy_override: str = "AUTO",
+    single_action_limit: int | None = None,
+    max_total_liters: float | None = None,
+    ml_fallback_reason: str | None = None,
 ) -> PlanningReport:
     tick = snapshot.simulation.tick
     sim_time = snapshot.simulation.sim_time
@@ -517,57 +123,61 @@ def build_report(
     event_list = events or []
     arrival_list = supply_arrivals or []
 
-    observed: dict[tuple[str, Fuel], dict[int, float]] = defaultdict(dict)
-    for entry in history:
-        if tick - history_ticks <= entry.tick < tick:
-            observed[entry.station_id, entry.fuel_type][entry.tick] = entry.demand_liters
+    observed = index_observations_by_series(history, current_tick=tick, history_ticks=history_ticks)
+    incoming, dispatch_used = _extract_incoming_and_dispatch(
+        snapshot=snapshot, allocations=allocations, horizon_ticks=horizon_ticks
+    )
 
-    routes_by_id = {route.id: route for route in snapshot.routes}
-    incoming = defaultdict(lambda: [0.0] * horizon_ticks)
-    dispatch_used: dict[str, float] = defaultdict(float)
-    for allocation in allocations:
-        if allocation.status in ("PENDING", "IN_TRANSIT") and allocation.created_tick == tick:
-            dispatch_used[allocation.source_depot_id] += allocation.quantity
-        eta = allocation.expected_arrival_tick
-        if allocation.status == "IN_TRANSIT" and eta is not None and tick <= eta < tick + horizon_ticks:
-            incoming[allocation.destination_station_id, allocation.fuel_type][eta - tick] += allocation.quantity
-        elif allocation.status == "PENDING" and allocation.route_id and allocation.route_id in routes_by_id:
-            pending_eta = routes_by_id[allocation.route_id].transit_ticks
-            if pending_eta < horizon_ticks:
-                incoming[allocation.destination_station_id, allocation.fuel_type][pending_eta] += allocation.quantity
-
-    depots = {depot.id: depot for depot in snapshot.depots}
     routes_by_station = defaultdict(list)
     for route in snapshot.routes:
         if route.status == "AVAILABLE" and route.transit_ticks < horizon_ticks:
             routes_by_station[route.destination_station_id].append(route)
 
     forecasts: list[Forecast] = []
-    recommendations: list[Recommendation] = []
-    fallback_active = False
+    demand_series_by_key: dict[tuple[str, Fuel], list[float]] = {}
+    demand_p10_by_key: dict[tuple[str, Fuel], list[float]] = {}
+    demand_p90_by_key: dict[tuple[str, Fuel], list[float]] = {}
+    std_by_key: dict[tuple[str, Fuel], float] = {}
+    fallback_active = bool(ml_fallback_reason)
+    has_any_full_history = False
+
+    use_chronos = bool(chronos_predictions) and policy_override in ("AUTO", "CHRONOS2")
+    active_source: ForecastSource = "CHRONOS2" if (chronos_predictions and policy_override == "CHRONOS2") else "SEASONAL"
+    active_model_ver = chronos_model_version if (active_source == "CHRONOS2" and chronos_model_version) else "seasonal-v2.0"
 
     for station in snapshot.stations:
         detail = details_map.get(station.id)
         region_factor = region_factors.get(station.region_id, 1.0)
-        station_routes = routes_by_station[station.id]
+        station_open = station.status == "OPEN"
+        st_routes = routes_by_station[station.id]
+        min_lead = min((r.transit_ticks for r in st_routes), default=3)
+
         for fuel in FUELS:
-            key = station.id, fuel
+            key = (station.id, fuel)
             samples = sorted(observed[key].items())
-            values = [liters for _, liters in samples]
-            stock = getattr(station.inventory, fuel)
-            capacity = getattr(station.capacity, fuel)
+            values = [obs.demand_liters for _, obs in samples]
+            stock = float(getattr(station.inventory, fuel))
+            capacity = float(getattr(station.capacity, fuel))
             arrivals = incoming[key]
-            station_open = station.status == "OPEN"
             conf_level, conf_score, demand_std = confidence_for_window(len(samples), history_ticks, values)
+            std_by_key[key] = demand_std
 
             if len(samples) < history_ticks:
                 fallback_active = True
                 fb_rate = fallback_demand_rate(samples, detail, region_factor, fuel, sim_time.hour, tick_minutes)
-                fb_depleted, fb_unmet, fb_room = project(stock, capacity, fb_rate, arrivals, station_open)
-                fb_baseline = round(sum(fb_unmet), 3)
-                fb_risk = classify_risk(stock, capacity, fb_depleted, fb_baseline)
+                fb_series = [fb_rate] * horizon_ticks
+                demand_series_by_key[key] = fb_series
+                demand_p10_by_key[key] = [round(max(0.0, fb_rate * 0.8), 3)] * horizon_ticks
+                demand_p90_by_key[key] = [round(fb_rate * 1.2, 3)] * horizon_ticks
+                fb_detail = project_detailed(stock, capacity, fb_series, arrivals, station_open)
+                fb_baseline = round(sum(fb_detail["unmet"]), 3)
+                fb_safety = compute_safety_stock_target(
+                    capacity=capacity, demand_series=fb_series, demand_std=demand_std or fb_rate * 0.12,
+                    min_lead_ticks=min_lead, cadence_ticks=6, station_open=station_open,
+                )
+                fb_risk = classify_risk(stock, capacity, fb_detail["depleted_offset"], fb_baseline, safety_target=fb_safety)
                 fb_prob = stockout_probability(
-                    stock, [fb_rate] * horizon_ticks, demand_std or fb_rate * 0.12, arrivals, fb_depleted, station_open,
+                    stock, fb_series, demand_std or fb_rate * 0.12, arrivals, fb_detail["depleted_offset"], station_open,
                 )
                 forecasts.append(Forecast(
                     station_id=station.id,
@@ -582,91 +192,64 @@ def build_report(
                     projected_demand_liters_per_tick=None,
                     fallback_demand_liters_per_tick=fb_rate,
                     demand_std_liters=demand_std if samples else None,
+                    p10_total_liters=round(sum(demand_p10_by_key[key]), 3),
+                    p50_total_liters=round(sum(fb_series), 3),
+                    p90_total_liters=round(sum(demand_p90_by_key[key]), 3),
                     confidence="LOW",
                     confidence_score=conf_score,
                     shortage_risk=fb_risk,
                     stockout_probability=fb_prob,
+                    probability_calibration="SCENARIO_HEURISTIC",
+                    outage_unmet_liters=fb_detail["outage_unmet_liters"],
+                    depletion_unmet_liters=fb_detail["depletion_unmet_liters"],
+                    first_unmet_tick=None,
+                    time_to_stockout_minutes=None,
+                    stockout_duration_ticks=0,
+                    safety_stock_target_liters=fb_safety,
                     fallback_used=True,
+                    forecast_source="PROFILE_FALLBACK",
+                    model_version="profile-fallback-v1",
+                    trajectory_p50=fb_detail["trajectory"],
                 ))
-
-                ratio = stock / capacity if capacity > 0 else 1.0
-                if station_open and ratio < 0.35:
-                    target_fill = max(0.0, capacity * 0.6 - stock)
-                    for route in station_routes:
-                        depot = depots.get(route.source_depot_id)
-                        if depot is None:
-                            continue
-                        eta = route.transit_ticks
-                        limit = min(
-                            getattr(depot.inventory, fuel),
-                            route.max_shipment,
-                            depot.dispatch_capacity_per_tick - dispatch_used[depot.id],
-                            capacity - stock,
-                            fb_room[eta],
-                            target_fill,
-                        )
-                        quantity = int(max(0.0, limit) * 1000) / 1000
-                        if quantity <= 0:
-                            continue
-                        with_shipment = arrivals.copy()
-                        with_shipment[eta] += quantity
-                        after_depleted, remaining_unmet, _ = project(
-                            stock, capacity, fb_rate, with_shipment, station_open,
-                        )
-                        after = round(sum(remaining_unmet), 3)
-                        avoided = round(max(0.0, fb_baseline - after), 3)
-                        after_risk = classify_risk(
-                            min(capacity, stock + quantity), capacity, after_depleted, after,
-                        )
-                        score = urgency_score(fb_unmet, remaining_unmet) + (1000.0 * (0.35 - ratio))
-                        alternatives = [r.id for r in station_routes if r.id != route.id]
-                        recommendations.append(Recommendation(
-                            route_id=route.id,
-                            source_depot_id=depot.id,
-                            source_depot_name=depot.name,
-                            destination_station_id=station.id,
-                            destination_station_name=station.name,
-                            fuel_type=fuel,
-                            quantity_liters=quantity,
-                            arrival_tick=tick + eta,
-                            eta_ticks=eta,
-                            eta_minutes=eta * tick_minutes,
-                            unmet_before_liters=fb_baseline,
-                            unmet_after_liters=after,
-                            unmet_avoided_liters=avoided,
-                            policy_mode="REORDER_FALLBACK",
-                            priority_score=round(score, 3),
-                            stockout_tick_before=tick + fb_depleted if fb_depleted is not None else None,
-                            stockout_tick_after=tick + after_depleted if after_depleted is not None else None,
-                            risk_before=fb_risk,
-                            risk_after=after_risk,
-                            confidence="LOW",
-                            rationale=(
-                                f"History incomplete ({len(samples)}/{history_ticks}); safety reorder fallback "
-                                f"triggered at {ratio * 100:.0f}% stock toward 60% target."
-                            ),
-                            signals=[
-                                f"Fallback safety rule: {ratio * 100:.0f}% stocked (< 35%)",
-                                f"Profile baseline estimate {fb_rate:.1f} L/tick",
-                            ],
-                            constraints=[
-                                f"Route limit {route.max_shipment:,.0f} L",
-                                f"Depot stock {getattr(depot.inventory, fuel):,.0f} L",
-                            ],
-                            alternative_routes=alternatives,
-                        ))
                 continue
 
-            rolling_mean, demand_series = build_demand_series(
-                samples, tick, horizon_ticks, tick_minutes, sim_time,
-                station.id, station.region_id, detail, event_list,
+            has_any_full_history = True
+            rolling_mean, norm_std, seas_pts = build_seasonal_forecast_points(
+                samples=samples, tick=tick, horizon_ticks=horizon_ticks,
+                tick_minutes=tick_minutes, sim_time=sim_time,
+                station_id=station.id, region_id=station.region_id,
+                station_detail=detail, events=event_list,
             )
-            depleted, unmet, room = project(stock, capacity, demand_series, arrivals, station_open)
-            baseline = round(sum(unmet), 3)
-            projected_avg = round(mean(demand_series), 3)
-            risk = classify_risk(stock, capacity, depleted, baseline)
-            prob = stockout_probability(stock, demand_series, demand_std, arrivals, depleted, station_open)
-            stockout_tick = tick + depleted if depleted is not None else None
+
+            series_source: ForecastSource = "SEASONAL"
+            series_model_ver = "seasonal-v2.0"
+            chosen_pts = seas_pts
+            if chronos_predictions and key in chronos_predictions and policy_override == "CHRONOS2":
+                c_pts = chronos_predictions[key]
+                if len(c_pts) == horizon_ticks:
+                    chosen_pts = c_pts
+                    series_source = "CHRONOS2"
+                    series_model_ver = chronos_model_version or "amazon/chronos-2"
+
+            p50_series = [pt.p50 for pt in chosen_pts]
+            p10_series = [pt.p10 if pt.p10 is not None else pt.p50 for pt in chosen_pts]
+            p90_series = [pt.p90 if pt.p90 is not None else pt.p50 for pt in chosen_pts]
+            demand_series_by_key[key] = p50_series
+            demand_p10_by_key[key] = p10_series
+            demand_p90_by_key[key] = p90_series
+
+            det = project_detailed(stock, capacity, p50_series, arrivals, station_open)
+            baseline = round(sum(det["unmet"]), 3)
+            projected_avg = round(mean(p50_series), 3)
+            safety_target = compute_safety_stock_target(
+                capacity=capacity, demand_series=p50_series, demand_std=demand_std,
+                min_lead_ticks=min_lead, cadence_ticks=6, station_open=station_open,
+            )
+            risk = classify_risk(stock, capacity, det["depleted_offset"], baseline, safety_target=safety_target)
+            prob = stockout_probability(stock, p50_series, demand_std, arrivals, det["depleted_offset"], station_open)
+            stockout_tick = (tick + det["depleted_offset"]) if det["depleted_offset"] is not None else None
+            first_unmet_tick = (tick + det["first_unmet_offset"]) if det["first_unmet_offset"] is not None else None
+            tts_min = (det["first_unmet_offset"] * tick_minutes) if det["first_unmet_offset"] is not None else None
 
             forecasts.append(Forecast(
                 station_id=station.id,
@@ -681,105 +264,271 @@ def build_report(
                 projected_demand_liters_per_tick=projected_avg,
                 fallback_demand_liters_per_tick=None,
                 demand_std_liters=demand_std,
+                p10_total_liters=round(sum(p10_series), 3),
+                p50_total_liters=round(sum(p50_series), 3),
+                p90_total_liters=round(sum(p90_series), 3),
                 confidence=conf_level,
                 confidence_score=conf_score,
                 shortage_risk=risk,
                 stockout_probability=prob,
+                probability_calibration="SCENARIO_HEURISTIC",
+                outage_unmet_liters=det["outage_unmet_liters"],
+                depletion_unmet_liters=det["depletion_unmet_liters"],
+                first_unmet_tick=first_unmet_tick,
+                time_to_stockout_minutes=tts_min,
+                stockout_duration_ticks=det["stockout_duration_ticks"],
+                safety_stock_target_liters=safety_target,
                 fallback_used=False,
+                forecast_source=series_source,
+                model_version=series_model_ver,
+                trajectory_p50=det["trajectory"],
             ))
-            if not station_open or baseline <= 0:
-                continue
 
-            for route in station_routes:
-                depot = depots.get(route.source_depot_id)
-                if depot is None:
-                    continue
-                eta = route.transit_ticks
-                limit = min(
-                    getattr(depot.inventory, fuel),
-                    route.max_shipment,
-                    depot.dispatch_capacity_per_tick - dispatch_used[depot.id],
-                    capacity - stock,
-                    room[eta],
-                    sum(unmet[eta:]),
-                )
-                # Floor to the simulator's inventory precision, within every limit.
-                quantity = int(max(0.0, limit) * 1000) / 1000
-                if quantity == 0:
-                    continue
-                with_shipment = arrivals.copy()
-                with_shipment[eta] += quantity
-                after_depleted, remaining_unmet, _ = project(
-                    stock, capacity, demand_series, with_shipment, station_open,
-                )
-                after = round(sum(remaining_unmet), 3)
-                avoided = round(baseline - after, 3)
-                if avoided <= 0:
-                    continue
-                after_stockout = tick + after_depleted if after_depleted is not None else None
-                after_risk = classify_risk(min(capacity, stock + quantity), capacity, after_depleted, after)
-                score = urgency_score(unmet, remaining_unmet)
-                alternatives = [r.id for r in station_routes if r.id != route.id]
-                signals = [
-                    f"{history_ticks}-tick rolling mean {rolling_mean:.1f} L/tick (projected {projected_avg:.1f} L/tick)",
-                    f"Stockout projected at tick {stockout_tick}" if stockout_tick is not None else "No full stockout in horizon",
-                ]
-                if detail and detail.demand_multiplier != 1.0:
-                    signals.append(f"Active demand multiplier {detail.demand_multiplier:.2f}x")
-                constraints = [
-                    f"Route max {route.max_shipment:,.0f} L",
-                    f"Depot dispatch remaining {depot.dispatch_capacity_per_tick - dispatch_used[depot.id]:,.0f} L",
-                    f"Station room at arrival {room[eta]:,.0f} L",
-                ]
-                recommendations.append(Recommendation(
-                    route_id=route.id,
-                    source_depot_id=depot.id,
-                    source_depot_name=depot.name,
-                    destination_station_id=station.id,
-                    destination_station_name=station.name,
-                    fuel_type=fuel,
-                    quantity_liters=quantity,
-                    arrival_tick=tick + eta,
-                    eta_ticks=eta,
-                    eta_minutes=eta * tick_minutes,
-                    unmet_before_liters=baseline,
-                    unmet_after_liters=after,
-                    unmet_avoided_liters=avoided,
-                    policy_mode="FORECAST_OPTIMIZER",
-                    priority_score=score,
-                    stockout_tick_before=stockout_tick,
-                    stockout_tick_after=after_stockout,
-                    risk_before=risk,
-                    risk_after=after_risk,
-                    confidence=conf_level,
-                    rationale=(
-                        f"Avoids {avoided:,.1f} L unmet demand ({risk} → {after_risk} risk); "
-                        f"arrives at tick {tick + eta} ({eta * tick_minutes} min)."
-                    ),
-                    signals=signals,
-                    constraints=constraints,
-                    alternative_routes=alternatives,
-                ))
+    if not has_any_full_history:
+        effective_source: ForecastSource = "REORDER_FALLBACK"
+        chosen_policy: PolicyMode = "REORDER_FALLBACK"
+        reason = ml_fallback_reason or "History incomplete across stations; preventive safety-stock fallback active."
+    elif policy_override == "SAFE_REORDER":
+        effective_source = active_source
+        chosen_policy = "SAFE_REORDER"
+        reason = "Safe reorder baseline mode selected."
+    elif policy_override == "CHRONOS2" and chronos_predictions:
+        effective_source = "CHRONOS2"
+        chosen_policy = "OR_TOOLS_CHRONOS2"
+        reason = None
+    else:
+        effective_source = "SEASONAL"
+        chosen_policy = "OR_TOOLS_SEASONAL"
+        reason = ml_fallback_reason
 
-    recommendations.sort(
-        key=lambda item: (-item.priority_score, -item.unmet_avoided_liters, item.eta_ticks, item.route_id, item.fuel_type),
+    recommendations, joint_plan = optimize_allocations(
+        snapshot=snapshot,
+        generation_id=generation_id,
+        forecasts=forecasts,
+        incoming=incoming,
+        dispatch_used=dispatch_used,
+        demand_series_by_key=demand_series_by_key,
+        demand_p10_by_key=demand_p10_by_key,
+        demand_p90_by_key=demand_p90_by_key,
+        std_by_key=std_by_key,
+        station_details=details_map,
+        forecast_source=effective_source,
+        model_version=active_model_ver,
+        policy_mode=chosen_policy,
+        fallback_reason=reason,
+        single_action_limit=single_action_limit,
+        max_total_liters=max_total_liters,
     )
-    anomalies = detect_anomalies(
+
+    rule_anomalies = detect_rule_anomalies(
         snapshot, observed, details_map, forecasts, dispatch_used, arrival_list, event_list,
     )
-    mode: Literal["FORECAST_OPTIMIZER", "REORDER_FALLBACK"] = (
-        "REORDER_FALLBACK" if fallback_active and all(f.demand_liters_per_tick is None for f in forecasts) else "FORECAST_OPTIMIZER"
+    anomalies = merge_ml_anomalies(
+        rule_anomalies, ml_anomaly_scores or [], snapshot=snapshot, station_details=details_map, events=event_list,
     )
+
+    now_utc = datetime.now(UTC)
     return PlanningReport(
+        generation_id=generation_id,
+        plan_id=joint_plan.plan_id,
         tick=tick,
+        current_tick=tick,
         history_ticks=history_ticks,
         horizon_ticks=horizon_ticks,
+        observed_at=now_utc,
+        forecast_generated_at=now_utc,
+        age_ticks=0,
+        cached=False,
+        degraded=bool(ml_fallback_reason),
+        degraded_reason=ml_fallback_reason,
+        forecast_source=effective_source,
+        model_version=active_model_ver,
+        solver_status=joint_plan.solver_status,
+        fallback_reason=joint_plan.fallback_reason,
         forecasts=forecasts,
         recommendations=recommendations,
-        policy_mode=mode,
-        fallback_active=fallback_active,
+        joint_plan=joint_plan,
+        policy_mode=(
+            "FORECAST_OPTIMIZER"
+            if joint_plan.policy_mode == "OR_TOOLS_SEASONAL"
+            else joint_plan.policy_mode
+        ),
+        fallback_active=fallback_active or joint_plan.solver_status != "OPTIMAL",
         anomalies=anomalies,
         events=event_list,
         supply_arrivals=arrival_list,
         simulator_metrics=simulator_metrics,
+    )
+
+
+def build_forecasts_response(
+    snapshot: Snapshot,
+    history: list[DemandObservation],
+    history_ticks: int,
+    horizon_ticks: int,
+    *,
+    generation_id: str,
+    station_details: list[StationDetail] | None = None,
+    regions: list[Region] | None = None,
+    events: list[SimulatorEvent] | None = None,
+    chronos_predictions: dict[tuple[str, Fuel], list[ForecastPoint]] | None = None,
+    chronos_model_version: str | None = None,
+    policy_override: str = "AUTO",
+    fallback_reason: str | None = None,
+    matured_accuracy: dict[str, Any] | None = None,
+) -> ForecastsResponse:
+    tick = snapshot.simulation.tick
+    sim_time = snapshot.simulation.sim_time
+    tick_minutes = snapshot.simulation.tick_minutes
+    details_map = {item.id: item for item in (station_details or [])}
+    region_factors = {item.id: item.demand_factor for item in (regions or [])}
+    event_list = events or []
+    observed = index_observations_by_series(history, current_tick=tick, history_ticks=history_ticks)
+
+    series_out: list[ForecastSeries] = []
+    any_chronos = False
+    for station in snapshot.stations:
+        detail = details_map.get(station.id)
+        r_fac = region_factors.get(station.region_id, 1.0)
+        for fuel in FUELS:
+            key = (station.id, fuel)
+            samples = sorted(observed[key].items())
+            obs_list = [obs for _, obs in samples]
+            if len(samples) < history_ticks:
+                fb = fallback_demand_rate(samples, detail, r_fac, fuel, sim_time.hour, tick_minutes)
+                pts = [
+                    ForecastPoint(
+                        tick=tick + off,
+                        sim_time=sim_time + timedelta(minutes=off * tick_minutes),
+                        p10=round(fb * 0.8, 3),
+                        p50=fb,
+                        p90=round(fb * 1.2, 3),
+                        quantile_method="SEASONAL_SIGMA_BAND",
+                        quality_warnings=["insufficient_history_profile_fallback"],
+                    )
+                    for off in range(horizon_ticks)
+                ]
+                s_src: ForecastSource = "PROFILE_FALLBACK"
+                s_ver = "profile-fallback-v1"
+                s_reason = fallback_reason or f"Insufficient history ({len(samples)}/{history_ticks} ticks)"
+            else:
+                _, _, pts = build_seasonal_forecast_points(
+                    samples=samples, tick=tick, horizon_ticks=horizon_ticks,
+                    tick_minutes=tick_minutes, sim_time=sim_time,
+                    station_id=station.id, region_id=station.region_id,
+                    station_detail=detail, events=event_list,
+                )
+                s_src = "SEASONAL"
+                s_ver = "seasonal-v2.0"
+                s_reason = fallback_reason
+                if chronos_predictions and key in chronos_predictions and policy_override == "CHRONOS2":
+                    c_pts = chronos_predictions[key]
+                    if len(c_pts) == horizon_ticks:
+                        pts = c_pts
+                        s_src = "CHRONOS2"
+                        s_ver = chronos_model_version or "amazon/chronos-2"
+                        any_chronos = True
+
+            series_out.append(ForecastSeries(
+                station_id=station.id,
+                station_name=station.name,
+                fuel_type=fuel,
+                source=s_src,
+                model_version=s_ver,
+                observations=len(samples),
+                first_history_tick=samples[0][0] if samples else None,
+                last_history_tick=samples[-1][0] if samples else None,
+                history=obs_list,
+                forecast=pts,
+                fallback_reason=s_reason,
+                mae_matured=matured_accuracy.get("mae") if matured_accuracy else None,
+                wape_matured=matured_accuracy.get("wape") if matured_accuracy else None,
+                p10_p90_coverage=matured_accuracy.get("p10_p90_coverage") if matured_accuracy else None,
+            ))
+
+    top_source: ForecastSource = "CHRONOS2" if any_chronos else ("SEASONAL" if any(s.observations >= history_ticks for s in series_out) else "PROFILE_FALLBACK")
+    top_ver = (chronos_model_version or "amazon/chronos-2") if any_chronos else ("seasonal-v2.0" if top_source == "SEASONAL" else "profile-fallback-v1")
+    return ForecastsResponse(
+        generation_id=generation_id,
+        as_of_tick=tick,
+        tick_minutes=tick_minutes,
+        horizon_ticks=horizon_ticks,
+        history_ticks=history_ticks,
+        source=top_source,
+        model_version=top_ver,
+        fallback_reason=fallback_reason,
+        forecast_generated_at=sim_time,
+        age_ticks=0,
+        series=series_out,
+    )
+
+
+def build_shortages_response(
+    *,
+    snapshot: Snapshot,
+    report: PlanningReport,
+    allocations: list[Allocation],
+) -> ShortagesResponse:
+    tick = snapshot.simulation.tick
+    incoming, _ = _extract_incoming_and_dispatch(
+        snapshot=snapshot, allocations=allocations, horizon_ticks=report.horizon_ticks
+    )
+    in_total: dict[tuple[str, Fuel], float] = {k: sum(v) for k, v in incoming.items()}
+    fc_map = {(f.station_id, f.fuel_type): f for f in report.forecasts}
+    stations_map = {s.id: s for s in snapshot.stations}
+    items: list[ShortageDetail] = []
+
+    for f in report.forecasts:
+        st = stations_map[f.station_id]
+        cur = float(getattr(st.inventory, f.fuel_type))
+        cap = float(getattr(st.capacity, f.fuel_type))
+        inc = in_total.get((st.id, f.fuel_type), 0.0)
+        unmet_p50 = f.unmet_liters if f.unmet_liters is not None else f.depletion_unmet_liters + f.outage_unmet_liters
+        explanation = (
+            f"OUTAGE: {f.outage_unmet_liters:,.1f} L unserved during outage."
+            if st.status == "OUTAGE"
+            else (
+                f"Projected first unmet demand at tick {f.first_unmet_tick} ({f.time_to_stockout_minutes} min); "
+                f"safety target {f.safety_stock_target_liters:,.0f} L."
+                if f.first_unmet_tick is not None
+                else f"No stockout in horizon; inventory position {cur + inc:,.0f} L vs {f.safety_stock_target_liters:,.0f} L safety target."
+            )
+        )
+        items.append(ShortageDetail(
+            station_id=st.id,
+            station_name=st.name,
+            region_id=st.region_id,
+            fuel_type=f.fuel_type,
+            station_status=st.status,
+            current_inventory=cur,
+            capacity=cap,
+            incoming_committed_liters=round(inc, 3),
+            inventory_position=round(cur + inc, 3),
+            safety_stock_target=f.safety_stock_target_liters,
+            shortage_risk=f.shortage_risk,
+            stockout_probability=f.stockout_probability,
+            probability_calibration=f.probability_calibration,
+            first_zero_stock_tick=f.stockout_tick,
+            first_unmet_tick=f.first_unmet_tick,
+            time_to_stockout_minutes=f.time_to_stockout_minutes,
+            stockout_duration_ticks=f.stockout_duration_ticks,
+            unmet_p10_liters=f.p10_total_liters,
+            unmet_p50_liters=unmet_p50,
+            unmet_p90_liters=f.p90_total_liters,
+            outage_unmet_liters=f.outage_unmet_liters,
+            depletion_unmet_liters=f.depletion_unmet_liters,
+            projected_trajectory=f.trajectory_p50,
+            explanation=explanation,
+        ))
+
+    risk_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
+    items.sort(key=lambda i: (risk_order.get(i.shortage_risk, 9), i.first_unmet_tick if i.first_unmet_tick is not None else 999999, -i.unmet_p50_liters))
+    for rank, item in enumerate(items, start=1):
+        item.urgency_rank = rank
+    return ShortagesResponse(
+        generation_id=report.generation_id,
+        as_of_tick=tick,
+        horizon_ticks=report.horizon_ticks,
+        forecast_source=report.forecast_source,
+        shortages=items,
     )

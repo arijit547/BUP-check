@@ -74,7 +74,9 @@ try {
   assert.equal(snapshot.simulation.tick, 0);
   assert.equal(snapshot.simulation.status, "PAUSED");
   assert.ok(snapshot.depots.length && snapshot.stations.length && snapshot.routes.length);
-  assert.deepEqual(ledger, { attempts: [], simulator_error: null });
+  assert.deepEqual(ledger.attempts, []);
+  assert.equal(ledger.simulator_error, null);
+  assert.equal(ledger.rebind_required, false);
   const healthEvidence = {
     project, mode, simulator: health,
     snapshot: {

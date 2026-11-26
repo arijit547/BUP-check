@@ -1,0 +1,62 @@
+{
+  "chronos2": {
+    "model_id": "amazon/chronos-2",
+    "revision": "29ec3766d36d6f73f0696f85560a422f50e8498c",
+    "license": "apache-2.0",
+    "source_url": "https://huggingface.co/amazon/chronos-2",
+    "weights_format": "safetensors",
+    "files_sha256": {
+      "config.json": "ef1143bfdc9c0376d9a056eefca46cb4b1ec3d0ffacd541ff56feb40fb708031",
+      "model.safetensors": "ddcda3c7508bf2528087723e98a20707cc04b7f370ae275a9fd88078ddba4f42"
+    },
+    "files_bytes": {
+      "config.json": 1067,
+      "model.safetensors": 477930472
+    },
+    "limitations": "120M zero-shot foundation model; pretrained on autogluon/chronos_datasets & Salesforce/GiftEvalPretrain. Inference latency on CPU scales with context length and series count; evaluated honestly against seasonal baseline."
+  },
+  "isolation_forest": {
+    "version": "iforest-bup-v1.0.0",
+    "artifact_path": "/app/artifacts/isolation_forest.joblib",
+    "artifact_sha256": "7191a531d25dd06e29b5319f09259448a80d4a16a73904eaed06da499cc9895b",
+    "features": [
+      "normalized_demand_ratio",
+      "rolling_residual_z",
+      "inventory_ratio",
+      "has_inventory_residual",
+      "inventory_balance_residual",
+      "sin_hour",
+      "cos_hour"
+    ],
+    "contamination": 0.005,
+    "decision_threshold": 0.0,
+    "train_normal_rows": 3360,
+    "train_split_fpr": 0.0051,
+    "validation_unannounced_metrics": {
+      "samples": 2208,
+      "tp": 48,
+      "fp": 18,
+      "fn": 0,
+      "tn": 2142,
+      "precision": 0.7273,
+      "recall": 1.0,
+      "f1": 0.8421,
+      "fpr": 0.0083,
+      "detection_delay_ticks": 0
+    },
+    "heldout_unannounced_metrics": {
+      "samples": 2208,
+      "tp": 108,
+      "fp": 21,
+      "fn": 0,
+      "tn": 2079,
+      "precision": 0.8372,
+      "recall": 1.0,
+      "f1": 0.9114,
+      "fpr": 0.01,
+      "detection_delay_ticks": 0
+    },
+    "validation_residual_fpr_after_known_mult": 0.0083,
+    "note": "Fitted exclusively on crisis-free normal baseline traces (normal_baseline.csv). Evaluated on unannounced demand_spike ticks across station/fuel series; event-level labels (outage/route/delay) that do not alter station demand_liters are handled by deterministic domain rules."
+  }
+}
