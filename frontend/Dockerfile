@@ -6,10 +6,10 @@ COPY . .
 RUN npm run build
 
 FROM nginx:alpine@sha256:7fc0fb4af7bf006aeb31aea88069976060f8f0a0a86b667126742cc17f4e31ae
-RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /etc/nginx/conf.d \
+RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx \
     && touch /run/nginx.pid \
     && chown nginx:nginx /run/nginx.pid
-COPY --chown=nginx:nginx nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 USER nginx
 EXPOSE 8080

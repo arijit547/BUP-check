@@ -28,11 +28,17 @@ interface AllocationPlannerProps {
 
 const PLAN_STORAGE_KEY = "bup.planner.active-plan-id";
 const SAFE_PLAN_ID_RE = /^plan-[a-zA-Z0-9_-]{3,120}$/;
+const ALLOWED_PLAN_ID_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
 
 function sanitizePlanId(id: string | null | undefined): string | null {
-  if (typeof id !== "string") return null;
-  const matched = SAFE_PLAN_ID_RE.exec(id);
-  return matched ? matched[0] : null;
+  if (typeof id !== "string" || !SAFE_PLAN_ID_RE.test(id)) return null;
+  let clean = "";
+  for (let i = 0; i < id.length; i += 1) {
+    const idx = ALLOWED_PLAN_ID_CHARS.indexOf(id.charAt(i));
+    if (idx < 0) return null;
+    clean += ALLOWED_PLAN_ID_CHARS.charAt(idx);
+  }
+  return clean;
 }
 
 export function AllocationPlanner({ routes, tick, disabled = false, onActionComplete }: AllocationPlannerProps) {
