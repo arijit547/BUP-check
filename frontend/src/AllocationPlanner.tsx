@@ -22,7 +22,8 @@ interface PlannerRoute {
 interface AllocationPlannerProps {
   routes: PlannerRoute[];
   tick: number;
-  disabled?: boolean;
+  stale: boolean;
+  approvalLocked: boolean;
   onActionComplete?: () => void;
 }
 
@@ -41,7 +42,7 @@ function sanitizePlanId(id: string | null | undefined): string | null {
   return clean;
 }
 
-export function AllocationPlanner({ routes, tick, disabled = false, onActionComplete }: AllocationPlannerProps) {
+export function AllocationPlanner({ routes, tick, stale, approvalLocked, onActionComplete }: AllocationPlannerProps) {
   const { mutate } = useSWRConfig();
   const [policy, setPolicy] = useState<"AUTO" | "CHRONOS2" | "SAFE_REORDER">("AUTO");
   const [horizonTicks, setHorizonTicks] = useState(96);
@@ -62,6 +63,10 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
   const [simQty, setSimQty] = useState(3000);
   const [simResult, setSimResult] = useState<SimulateResponse | null>(null);
   const [simBusy, setSimBusy] = useState(false);
+  const [simError, setSimError] = useState<string | null>(null);
+
+  const optimizeDisabled = stale || planBusy || batchBusy;
+  const approvalDisabled = optimizeDisabled || approvalLocked || Boolean(staleGenNotice);
 
   // Restore server-stored active plan and approval outcomes on mount / browser refresh / multi-tab load
   useEffect(() => {
@@ -182,7 +187,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
   }
 
   async function submitPlanApproval(reconcileOnly = false) {
-    if (!plan || plan.shipments.length === 0 || disabled) return;
+    if (!plan || plan.shipments.length === 0 || approvalDisabled) return;
     const safePlanId = sanitizePlanId(plan.plan_id);
     if (!safePlanId) {
       setBatchError("Invalid plan identifier.");
@@ -245,6 +250,8 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
     const route = routes.find((r) => r.id === simRouteId) ?? openRoutes[0];
     if (!route) return;
     setSimBusy(true);
+    setSimResult(null);
+    setSimError(null);
     try {
       const res = await fetchJson<SimulateResponse>("/api/simulate", {
         method: "POST",
@@ -264,6 +271,8 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
         }),
       });
       setSimResult(res);
+    } catch (err) {
+      setSimError(err instanceof Error ? err.message : "Please try again.");
     } finally {
       setSimBusy(false);
     }
@@ -273,10 +282,8 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
     !!approvalResult &&
     approvalResult.total_shipments > 0 &&
     approvalResult.confirmed_count === approvalResult.total_shipments;
-  const planBlocked = Boolean(staleGenNotice);
-
   return (
-    <section className="panel section-block" aria-label="Joint optimization and what-if planner">
+    <section className="panel section-block allocation-planner" aria-label="Joint optimization and what-if planner">
       <header className="panel-heading">
         <div>
           <div className="eyebrow">OR-TOOLS JOINT OPTIMIZATION &amp; COUNTERFACTUAL SIMULATOR</div>
@@ -303,7 +310,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
             <input type="checkbox" checked={singleAction} onChange={(e) => setSingleAction(e.target.checked)} />
             <span>Single shipment limit</span>
           </label>
-          <button type="button" className="refresh-button" onClick={runOptimize} disabled={planBusy}>
+          <button type="button" className="refresh-button" onClick={runOptimize} disabled={optimizeDisabled}>
             <Play size={13} />
             <span>{planBusy ? "Solving..." : "Run Optimizer"}</span>
           </button>
@@ -375,7 +382,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
                     <button
                       type="button"
                       className="refresh-button"
-                      disabled={disabled || batchBusy || planBlocked}
+                      disabled={approvalDisabled}
                       onClick={() => void submitPlanApproval(true)}
                     >
                       {batchBusy ? "Reconciling..." : `Reconcile unresolved (${approvalResult.unknown_count})`}
@@ -385,7 +392,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
                     <button
                       type="button"
                       className="refresh-button approve-button"
-                      disabled={disabled || batchBusy || planBlocked}
+                      disabled={approvalDisabled}
                       onClick={() => setReviewOpen(true)}
                     >
                       Review joint batch ({plan.shipments.length} shipments)
@@ -394,7 +401,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
                     <button
                       type="button"
                       className="refresh-button approve-button"
-                      disabled={disabled || batchBusy || planBlocked}
+                      disabled={approvalDisabled}
                       onClick={() => void submitPlanApproval(false)}
                     >
                       {batchBusy ? "Checking..." : `All ${approvalResult.confirmed_count} confirmed (replay safe)`}
@@ -403,7 +410,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
                     <button
                       type="button"
                       className="refresh-button approve-button"
-                      disabled={planBusy}
+                      disabled={optimizeDisabled}
                       onClick={runOptimize}
                     >
                       Generate updated plan
@@ -412,7 +419,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
                     <button
                       type="button"
                       className="refresh-button approve-button"
-                      disabled={disabled || batchBusy || planBlocked}
+                      disabled={approvalDisabled}
                       onClick={() => setReviewOpen(true)}
                     >
                       {batchBusy
@@ -425,7 +432,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
 
               {reviewOpen && !allConfirmed ? (
                 <div className="approval-review" role="region" aria-label="Joint batch approval confirmation" style={{ marginBottom: 10 }}>
-                  <div style={{ flex: 1 }}>
+                  <div>
                     <b>Confirm immutable joint plan `{plan.plan_id}` (generated at tick {plan.as_of_tick})</b>
                     <div className="muted-inline" style={{ marginTop: 4 }}>
                       Approving dispatches the exact reviewed quantities and routes below using persistent server-owned intent IDs.
@@ -448,7 +455,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
                   <button
                     type="button"
                     className="refresh-button approve-button"
-                    disabled={disabled || batchBusy || planBlocked}
+                    disabled={approvalDisabled}
                     onClick={() => void submitPlanApproval(false)}
                   >
                     {batchBusy ? "Submitting..." : `Confirm & Submit Batch (${plan.shipments.length})`}
@@ -465,11 +472,7 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
 
               {approvalResult ? (
                 <div
-                  className={
-                    approvalResult.state === "CONFIRMED"
-                      ? "planning-benefit"
-                      : "warning-note"
-                  }
+                  className={`batch-status ${approvalResult.state === "CONFIRMED" ? "planning-benefit" : "warning-note"}`}
                   role="status"
                   style={{ marginBottom: 8 }}
                 >
@@ -568,11 +571,12 @@ export function AllocationPlanner({ routes, tick, disabled = false, onActionComp
               onChange={(e) => setSimQty(Number(e.target.value))}
               style={{ width: 90, height: 30, fontSize: 11 }}
             />
-            <button type="button" className="refresh-button" onClick={runSimulation} disabled={simBusy}>
+            <button type="button" className="refresh-button" onClick={runSimulation} disabled={stale || simBusy}>
               {simBusy ? "Simulating..." : "Simulate"}
             </button>
           </div>
         </div>
+        {simError ? <p className="error-note" role="alert">Could not simulate shipment. {simError}</p> : null}
         {simResult ? (
           <div className={`preview-result ${simResult.valid ? "preview-valid" : "preview-invalid"}`} style={{ marginTop: 10 }}>
             {simResult.valid ? <CheckCircle2 size={16} /> : <XCircle size={16} />}

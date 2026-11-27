@@ -1,21 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { admin, json } from "../../scripts/simulator.mjs";
 
-const simulator = process.env.BUP_TEST_SIMULATOR ?? "http://127.0.0.1:8000";
-
-async function admin(action, body) {
-  const response = await fetch(`${simulator}/admin/${action}`, {
-    method: "POST",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!response.ok) throw new Error(`Simulator /admin/${action} failed (${response.status})`);
-  return response.json();
-}
+const simulator = process.env.BUP_TEST_SIMULATOR;
 
 test("upgraded dashboard views, optimizer what-if, keyboard nav, and mobile layout work", async ({ page }) => {
-  await admin("reset");
+  await admin(simulator, "reset");
   for (let i = 0; i < 36; i++) {
-    await admin("step");
+    await admin(simulator, "step");
   }
 
   await page.goto("/");
@@ -48,6 +39,17 @@ test("upgraded dashboard views, optimizer what-if, keyboard nav, and mobile layo
   await expect(optRegion.getByRole("region", { name: "Joint plan line-item review" })).toBeVisible();
   await optRegion.getByRole("button", { name: "Simulate" }).click();
   await expect(optRegion.getByText(/Feasible proposal|Invalid:/)).toBeVisible();
+  await optRegion.getByRole("spinbutton", { name: "Counterfactual quantity" }).fill("-1");
+  const rejectedPreview = page.waitForResponse(response =>
+    new URL(response.url()).pathname === "/api/simulate" && response.request().method() === "POST");
+  await optRegion.getByRole("button", { name: "Simulate", exact: true }).click();
+  expect((await rejectedPreview).status()).toBe(422);
+  await expect(optRegion.getByRole("alert")).toContainText("Could not simulate shipment. Request failed (422)");
+  await expect(optRegion.getByText(/Feasible proposal|Invalid:/)).toHaveCount(0);
+  await optRegion.getByRole("spinbutton", { name: "Counterfactual quantity" }).fill("3000");
+  await optRegion.getByRole("button", { name: "Simulate", exact: true }).click();
+  await expect(optRegion.getByText(/Feasible proposal|Invalid:/)).toBeVisible();
+  await expect(optRegion.getByRole("alert")).toHaveCount(0);
 
   // Approve 10-shipment joint batch via backend-owned PUT /api/plans/{plan_id}/approval
   const reviewBtn = optRegion.getByRole("button", { name: /Review joint batch \(/ });
@@ -62,7 +64,7 @@ test("upgraded dashboard views, optimizer what-if, keyboard nav, and mobile layo
   expect(batchRes.state).toBe("CONFIRMED");
   expect(batchRes.confirmed_count).toBeGreaterThanOrEqual(8);
   const initialCount = batchRes.confirmed_count;
-  const simAllocs1 = await (await fetch(`${simulator}/v1/allocations`)).json();
+  const simAllocs1 = await json(`${simulator}/v1/allocations`);
   expect(simAllocs1).toHaveLength(initialCount);
 
   // Browser refresh preserves server-stored plan & durable per-shipment allocation IDs
@@ -71,7 +73,7 @@ test("upgraded dashboard views, optimizer what-if, keyboard nav, and mobile layo
   await expect(optRegion.getByText(`Batch status: CONFIRMED — ${initialCount}/${initialCount} confirmed`)).toBeVisible();
 
   // Step simulator from tick 36 to tick 37 and replay same plan approval: STILL exact same count!
-  await admin("step");
+  await admin(simulator, "step");
   const replayBtn = optRegion.getByRole("button", { name: /All \d+ confirmed \(replay safe\)/ });
   await expect(replayBtn).toBeVisible();
   const replayPut = page.waitForResponse(
@@ -81,7 +83,7 @@ test("upgraded dashboard views, optimizer what-if, keyboard nav, and mobile layo
   const replayRes = await (await replayPut).json();
   expect(replayRes.state).toBe("CONFIRMED");
   expect(replayRes.confirmed_count).toBe(initialCount);
-  const simAllocs2 = await (await fetch(`${simulator}/v1/allocations`)).json();
+  const simAllocs2 = await json(`${simulator}/v1/allocations`);
   expect(simAllocs2).toHaveLength(initialCount);
   expect(simAllocs2.map((a) => a.id).sort((a, b) => a - b)).toEqual(simAllocs1.map((a) => a.id).sort((a, b) => a - b));
 
@@ -89,8 +91,23 @@ test("upgraded dashboard views, optimizer what-if, keyboard nav, and mobile layo
   await page.getByRole("button", { name: "Models & Eval" }).click();
   await expect(page.getByRole("region", { name: "Models, generation and benchmark evaluation" })).toBeVisible();
 
-  // Mobile responsive viewport check (390x844)
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Overview" }).click();
-  await expect(page.getByRole("heading", { name: "Inventory by location" })).toBeVisible();
+  await test.step("Keep the dashboard views within 390 and 320 pixel viewports", async () => {
+    const pageWidth = () => page.evaluate(() => document.documentElement.scrollWidth);
+    const views = [
+      ["Overview", [page.getByRole("heading", { name: "Inventory by location" })]],
+      ["Network", [page.getByRole("img", { name: "Fuel depot to station topology diagram" })]],
+      ["Forecasts", [page.getByRole("img", { name: "Demand history and quantile forecast chart" })]],
+      ["Shortages & Incidents", [page.getByRole("region", { name: "Shortage projection and incident timeline" }).getByRole("row").nth(1)]],
+      ["Optimizer & What-If", [optRegion.getByRole("button", { name: "Run Optimizer" }), optRegion.getByRole("button", { name: "Refresh batch status" })]],
+      ["Models & Eval", [page.getByRole("region", { name: "Models, generation and benchmark evaluation" })]],
+    ];
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const [view, contents] of views) {
+        await page.getByRole("navigation", { name: "Operations views" }).getByRole("button", { name: view, exact: true }).click();
+        for (const content of contents) await expect(content).toBeVisible();
+        await expect.poll(pageWidth, { message: `${view} should fit at ${width}px` }).toBe(width);
+      }
+    }
+  });
 });

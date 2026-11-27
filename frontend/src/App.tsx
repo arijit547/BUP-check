@@ -116,7 +116,7 @@ export default function App() {
         {activeTab === "network" && <NetworkTopology depots={data.depots} stations={data.stations} routes={data.routes} tickMinutes={data.simulation.tick_minutes} />}
         {activeTab === "forecasts" && <ForecastExplorer asOfTick={data.simulation.tick} />}
         {activeTab === "shortages" && <ShortageIncidents asOfTick={data.simulation.tick} />}
-        {activeTab === "optimizer" && <AllocationPlanner routes={data.routes} tick={data.simulation.tick} disabled={!!stale || authLocked} onActionComplete={() => { void mutate(); }} />}
+        {activeTab === "optimizer" && <AllocationPlanner routes={data.routes} tick={data.simulation.tick} stale={!!stale} approvalLocked={authLocked} onActionComplete={() => { void mutate(); }} />}
         {activeTab === "models" && <EvaluationHealth onRebound={() => { void mutate(); }} />}
 
       </>}

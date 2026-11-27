@@ -36,7 +36,7 @@ See [`.env.example`](.env.example) for optional operator authentication (`OPERAT
 ## Verification Commands
 
 ```powershell
-npm ci --prefix frontend --dry-run
+npm ci --prefix frontend --ignore-scripts
 npm run build --prefix frontend
 $env:BUP_CHROMIUM_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 node scripts/verify.mjs e2e

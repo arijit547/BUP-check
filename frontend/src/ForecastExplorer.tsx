@@ -109,7 +109,7 @@ export function ForecastExplorer({ generationKey, asOfTick }: ForecastExplorerPr
   }
 
   return (
-    <section className="panel section-block" aria-label="Demand forecast explorer">
+    <section className="panel section-block forecast-explorer" aria-label="Demand forecast explorer">
       <header className="panel-heading">
         <div>
           <div className="eyebrow">TIME-SERIES DEMAND INTELLIGENCE</div>
